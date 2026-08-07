@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Addictive Gym | Panel de Gestión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- Firebase compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+:root{
+  --teal:#3FC1C4;
+  --teal-dark:#2A9DA0;
+  --teal-light:#7FDBDD;
+  --orange:#F0813C;
+  --orange-dark:#D4691F;
+  --peach:#FADFB8;
+  --bg:#12171A;
+  --bg-2:#1A2125;
+  --card:#1E2629;
+  --card-2:#232C30;
+  --border:#2C3639;
+  --text:#F2F5F5;
+  --text-muted:#8FA0A4;
+  --danger:#E5544F;
+  --ok:#4CC98A;
+  --radius:14px;
+  --shadow:0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family:'Inter',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.display{font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
+button{font-family:inherit;cursor:pointer;border:none;}
+input,select,textarea{font-family:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+.hidden{display:none !important;}
+
+/* ---------- LOADER ---------- */
+#loader{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:16px;}
+.pulse-wrap{position:relative;width:90px;height:90px;display:flex;align-items:center;justify-content:center;}
+.pulse-ring{position:absolute;inset:0;border-radius:50%;border:3px solid var(--orange);opacity:0;animation:pulseRing 1.8s ease-out infinite;}
+.pulse-ring:nth-child(2){animation-delay:.6s;}
+.pulse-ring:nth-child(3){animation-delay:1.2s;}
+@keyframes pulseRing{
+  0%{transform:scale(.5);opacity:.8;}
+  100%{transform:scale(1.6);opacity:0;}
+}
+.pulse-core{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--orange));display:flex;align-items:center;justify-content:center;font-family:'Rajdhani';font-weight:700;font-size:20px;color:#111;}
+#loader p{color:var(--text-muted);font-size:14px;letter-spacing:1px;text-transform:uppercase;}
+
+/* ---------- LOGIN ---------- */
+#loginScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(63,193,196,.15), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(240,129,60,.15), transparent 40%),
+    var(--bg);
+  padding:24px;
+}
+.login-box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:36px 32px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+.login-box::before{content:'';position:absolute;top:-60%;right:-40%;width:220px;height:220px;background:radial-gradient(circle,rgba(240,129,60,.25),transparent 70%);}
+.login-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}
+.login-logo .letter{
+  width:52px;height:52px;border-radius:12px;
+  background:linear-gradient(135deg,var(--teal),var(--orange));
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Rajdhani';font-weight:700;font-size:26px;color:#101416;
+  animation:flexPulse 2.4s ease-in-out infinite;
+}
+@keyframes flexPulse{
+  0%,100%{transform:scale(1) rotate(0deg);}
+  50%{transform:scale(1.08) rotate(-4deg);}
+}
+.login-title{text-align:center;font-size:26px;margin-top:10px;}
+.login-title span{color:var(--orange);}
+.login-sub{text-align:center;color:var(--text-muted);font-size:13px;margin-bottom:26px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;}
+.field input,.field select,.field textarea{
+  width:100%;padding:12px 14px;background:var(--bg-2);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);font-size:15px;transition:border-color .2s,box-shadow .2s;
+}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(63,193,196,.15);}
+.btn{
+  padding:13px 22px;border-radius:10px;font-weight:600;font-size:14px;letter-spacing:.3px;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .15s,box-shadow .15s,opacity .15s;
+}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#08181a;width:100%;}
+.btn-primary:hover{box-shadow:0 6px 20px rgba(63,193,196,.35);}
+.btn-orange{background:linear-gradient(135deg,var(--orange),var(--orange-dark));color:#1a0e04;}
+.btn-orange:hover{box-shadow:0 6px 20px rgba(240,129,60,.35);}
+.btn-ghost{background:var(--bg-2);color:var(--text);border:1px solid var(--border);}
+.btn-ghost:hover{border-color:var(--teal);}
+.btn-danger{background:rgba(229,84,79,.15);color:var(--danger);border:1px solid rgba(229,84,79,.4);}
+.btn-sm{padding:8px 14px;font-size:13px;border-radius:8px;}
+.error-msg{background:rgba(229,84,79,.12);border:1px solid rgba(229,84,79,.35);color:#ff8f8b;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;}
+
+/* ---------- APP LAYOUT ---------- */
+#app{display:none;min-height:100vh;grid-template-columns:250px 1fr;}
+#app.show{display:grid;}
+.sidebar{background:var(--bg-2);border-right:1px solid var(--border);padding:24px 16px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 20px 8px;margin-bottom:12px;border-bottom:1px solid var(--border);}
+.brand .letter{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,var(--teal),var(--orange));display:flex;align-items:center;justify-content:center;font-family:'Rajdhani';font-weight:700;color:#0d1214;}
+.brand-name{font-family:'Rajdhani';font-weight:700;font-size:16px;letter-spacing:.5px;}
+.nav-item{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:9px;color:var(--text-muted);font-size:14px;font-weight:500;transition:background .15s,color .15s;background:transparent;text-align:left;width:100%;}
+.nav-item:hover{background:var(--card);color:var(--text);}
+.nav-item.active{background:linear-gradient(90deg,rgba(63,193,196,.18),transparent);color:var(--teal-light);border-left:3px solid var(--teal);padding-left:9px;}
+.nav-item .badge{margin-left:auto;background:var(--orange);color:#1a0e04;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;}
+.nav-footer{margin-top:auto;padding-top:16px;border-top:1px solid var(--border);}
+
+main{padding:28px 32px;overflow-y:auto;height:100vh;}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:12px;}
+.topbar h1{font-size:24px;}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:26px;}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;}
+.stat-card .num{font-family:'Rajdhani';font-size:32px;font-weight:700;}
+.stat-card .lbl{color:var(--text-muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-top:4px;}
+.stat-card.teal .num{color:var(--teal);}
+.stat-card.orange .num{color:var(--orange);}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:22px;}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+.card-head h2{font-size:18px;}
+
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding:10px 12px;border-bottom:1px solid var(--border);}
+td{padding:12px;border-bottom:1px solid var(--border);font-size:14px;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.02);}
+.avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--bg-2);border:2px solid var(--border);}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.pill.ok{background:rgba(76,201,138,.15);color:var(--ok);}
+.pill.pend{background:rgba(240,129,60,.15);color:var(--orange);}
+.pill.off{background:rgba(229,84,79,.15);color:var(--danger);}
+.pill.locked{background:rgba(143,160,164,.15);color:var(--text-muted);}
+
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.search-box{position:relative;}
+.search-box input{padding-left:36px;width:220px;}
+.search-box::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;opacity:.6;}
+
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px;backdrop-filter:blur(3px);}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border);}
+.modal-head h3{font-size:18px;}
+.modal-close{background:transparent;color:var(--text-muted);font-size:20px;width:32px;height:32px;border-radius:8px;}
+.modal-close:hover{background:var(--bg-2);color:var(--text);}
+.modal-body{padding:22px 24px;}
+.modal-foot{padding:18px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:520px){.grid-2{grid-template-columns:1fr;}}
+
+.photo-upload{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
+.photo-preview{width:70px;height:70px;border-radius:50%;object-fit:cover;background:var(--bg-2);border:2px dashed var(--border);}
+.toast-wrap{position:fixed;bottom:24px;right:24px;z-index:2000;display:flex;flex-direction:column;gap:10px;}
+.toast{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--teal);padding:14px 18px;border-radius:10px;box-shadow:var(--shadow);font-size:14px;max-width:320px;animation:toastIn .25s ease-out;}
+.toast.err{border-left-color:var(--danger);}
+@keyframes toastIn{from{transform:translateX(30px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;}
+.tab-btn{padding:9px 16px;border-radius:9px;background:var(--bg-2);color:var(--text-muted);font-size:13px;font-weight:600;border:1px solid var(--border);}
+.tab-btn.active{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#08181a;border-color:transparent;}
+
+.empty-state{text-align:center;padding:50px 20px;color:var(--text-muted);}
+.empty-state .icon{font-size:40px;margin-bottom:10px;}
+
+/* month lock */
+.month-nav{display:flex;align-items:center;gap:10px;}
+.month-nav button{background:var(--bg-2);border:1px solid var(--border);width:34px;height:34px;border-radius:8px;color:var(--text);font-size:16px;}
+.month-nav button:disabled{opacity:.3;cursor:not-allowed;}
+.month-label{font-family:'Rajdhani';font-weight:700;font-size:16px;min-width:150px;text-align:center;text-transform:capitalize;}
+
+/* ---------- PUBLIC INSCRIPCION FORM ---------- */
+#inscripcionScreen{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(63,193,196,.18), transparent 45%),
+    radial-gradient(circle at 90% 90%, rgba(240,129,60,.18), transparent 45%),
+    var(--bg);
+  display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.insc-box{width:100%;max-width:520px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:36px 30px;box-shadow:var(--shadow);}
+.insc-header{text-align:center;margin-bottom:24px;}
+.insc-header .letter{width:60px;height:60px;border-radius:14px;margin:0 auto 14px auto;background:linear-gradient(135deg,var(--teal),var(--orange));display:flex;align-items:center;justify-content:center;font-family:'Rajdhani';font-weight:700;font-size:30px;color:#0d1214;animation:flexPulse 2.4s ease-in-out infinite;}
+.insc-header h1{font-size:24px;}
+.insc-header p{color:var(--text-muted);font-size:13px;margin-top:6px;}
+.plan-option{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s,background .15s;}
+.plan-option:hover{border-color:var(--teal);}
+.plan-option.sel{border-color:var(--orange);background:rgba(240,129,60,.08);}
+.plan-option .pname{font-weight:700;font-family:'Rajdhani';font-size:16px;}
+.plan-option .pprice{color:var(--orange);font-weight:700;}
+.plan-option .pdet{color:var(--text-muted);font-size:12px;margin-top:3px;}
+.photo-upload-big{border:2px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:border-color .15s;}
+.photo-upload-big:hover{border-color:var(--teal);}
+.photo-upload-big img{width:100px;height:100px;border-radius:50%;object-fit:cover;margin:0 auto 10px auto;display:block;}
+.insc-success{text-align:center;padding:20px 0;}
+.insc-success .big-check{width:70px;height:70px;border-radius:50%;background:rgba(76,201,138,.15);color:var(--ok);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 18px auto;}
+
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+@media(max-width:900px){
+  #app.show{grid-template-columns:1fr;}
+  .sidebar{position:fixed;left:-260px;top:0;bottom:0;width:250px;z-index:900;transition:left .25s;box-shadow:var(--shadow);}
+  .sidebar.open{left:0;}
+  main{padding:20px 16px;}
+  .mobile-menu-btn{display:flex !important;}
+  table{display:block;overflow-x:auto;white-space:nowrap;}
+}
+.mobile-menu-btn{display:none;background:var(--card);border:1px solid var(--border);width:40px;height:40px;border-radius:9px;align-items:center;justify-content:center;font-size:18px;color:var(--text);}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:850;}
+.sidebar-overlay.show{display:block;}
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="pulse-wrap">
+    <div class="pulse-ring"></div><div class="pulse-ring"></div><div class="pulse-ring"></div>
+    <div class="pulse-core">A</div>
+  </div>
+  <p>Cargando Addictive Gym...</p>
+</div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen" style="display:none;">
+  <div class="login-box">
+    <div class="login-logo"><div class="letter">A</div></div>
+    <h1 class="login-title">ADDICTIVE <span>GYM</span></h1>
+    <p class="login-sub">Panel de gestión — Ingresá tus credenciales</p>
+    <div id="loginError"></div>
+    <form id="loginForm">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" required autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input type="password" id="loginPass" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary" id="loginBtn">Ingresar</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="letter">A</div><div class="brand-name">ADDICTIVE GYM</div></div>
+    <button class="nav-item active" data-view="dashboard">📊 Dashboard</button>
+    <button class="nav-item" data-view="socios">🧑‍🤝‍🧑 Socios</button>
+    <button class="nav-item" data-view="cuotas">💳 Cuotas</button>
+    <button class="nav-item" data-view="profesores">🏋️ Profes / Liquidaciones</button>
+    <button class="nav-item" data-view="inscripciones">📝 Inscripciones <span class="badge hidden" id="inscBadge">0</span></button>
+    <button class="nav-item" data-view="config">⚙️ Configuración</button>
+    <div class="nav-footer">
+      <button class="nav-item" id="logoutBtn">🚪 Salir</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+      <h1 id="viewTitle">Dashboard</h1>
+    </div>
+
+    <!-- ---- DASHBOARD ---- -->
+    <section id="view-dashboard" class="view">
+      <div class="stats-row">
+        <div class="stat-card teal"><div class="num" id="statSocios">0</div><div class="lbl">Socios activos</div></div>
+        <div class="stat-card orange"><div class="num" id="statCuotasMes">$0</div><div class="lbl">Recaudado este mes</div></div>
+        <div class="stat-card teal"><div class="num" id="statPendientes">0</div><div class="lbl">Cuotas pendientes</div></div>
+        <div class="stat-card orange"><div class="num" id="statInscPend">0</div><div class="lbl">Inscripciones pendientes</div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Link de inscripción pública</h2></div>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">Compartí este link por WhatsApp o Instagram para que se inscriban solos:</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <input type="text" id="inscLinkBox" readonly style="flex:1;min-width:220px;padding:12px 14px;background:var(--bg-2);border:1px solid var(--border);border-radius:10px;color:var(--teal-light);">
+          <button class="btn btn-orange" id="copyInscLink">📋 Copiar link</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- SOCIOS ---- -->
+    <section id="view-socios" class="view hidden">
+      <div class="card">
+        <div class="card-head">
+          <h2>Socios</h2>
+          <div class="toolbar">
+            <div class="search-box"><input type="text" id="searchSocios" placeholder="Buscar por nombre o DNI..."></div>
+            <button class="btn btn-orange btn-sm" id="btnNuevoSocio">➕ Nuevo socio</button>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th></th><th>Nombre</th><th>Plan</th><th>Profe</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="sociosTableBody"></tbody>
+        </table>
+        <div class="empty-state hidden" id="sociosEmpty"><div class="icon">🧑‍🤝‍🧑</div>Todavía no hay socios cargados.</div>
+      </div>
+    </section>
+
+    <!-- ---- CUOTAS ---- -->
+    <section id="view-cuotas" class="view hidden">
+      <div class="card">
+        <div class="card-head">
+          <h2>Control de cuotas</h2>
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-orange btn-sm" id="btnRecordatoriosMasivos">📣 Recordatorios masivos</button>
+            <div class="month-nav">
+              <button id="mesPrev">‹</button>
+              <div class="month-label" id="mesLabel">-</div>
+              <button id="mesNext">›</button>
+            </div>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th></th><th>Socio</th><th>Plan</th><th>Estado</th><th>Monto pagado</th><th>Fecha pago</th><th></th></tr></thead>
+          <tbody id="cuotasTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---- PROFESORES / LIQUIDACIONES ---- -->
+    <section id="view-profesores" class="view hidden">
+      <div class="card">
+        <div class="card-head">
+          <h2>Liquidaciones por profe</h2>
+          <div class="month-nav">
+            <button id="mesPrevProf">‹</button>
+            <div class="month-label" id="mesLabelProf">-</div>
+            <button id="mesNextProf">›</button>
+          </div>
+        </div>
+        <div class="tabs" id="profeTabs"></div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+          <input type="checkbox" id="corteAl10" checked style="width:16px;height:16px;">
+          Solo contar pagos hechos hasta el día 10 del mes (corte de liquidación)
+        </label>
+        <div class="stats-row" style="margin-bottom:18px;">
+          <div class="stat-card teal"><div class="num" id="profAlumnos">0</div><div class="lbl">Alumnos asignados</div></div>
+          <div class="stat-card orange"><div class="num" id="profTotal">$0</div><div class="lbl">Total a liquidar</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Alumno</th><th>Plan</th><th>Estado cuota</th><th>Monto</th></tr></thead>
+          <tbody id="profeTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---- INSCRIPCIONES ---- -->
+    <section id="view-inscripciones" class="view hidden">
+      <div class="card">
+        <div class="card-head"><h2>Inscripciones pendientes</h2></div>
+        <table>
+          <thead><tr><th></th><th>Nombre</th><th>Plan elegido</th><th>Profe elegido</th><th>Teléfono</th><th>Fecha</th><th></th></tr></thead>
+          <tbody id="inscTableBody"></tbody>
+        </table>
+        <div class="empty-state hidden" id="inscEmpty"><div class="icon">📝</div>No hay inscripciones pendientes.</div>
+      </div>
+    </section>
+
+    <!-- ---- CONFIG ---- -->
+    <section id="view-config" class="view hidden">
+      <div class="card">
+        <div class="card-head"><h2>Datos del gimnasio</h2></div>
+        <div class="grid-2">
+          <div class="field"><label>Nombre</label><input type="text" id="cfgNombre"></div>
+          <div class="field"><label>Teléfono</label><input type="text" id="cfgTelefono"></div>
+          <div class="field"><label>Email</label><input type="text" id="cfgEmail"></div>
+          <div class="field"><label>Instagram</label><input type="text" id="cfgInstagram"></div>
+        </div>
+        <div class="field"><label>Dirección</label><input type="text" id="cfgDireccion"></div>
+        <button class="btn btn-primary" style="width:auto;" id="btnGuardarDatos">Guardar datos</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Datos bancarios (Mercado Pago)</h2></div>
+        <div id="cuentasBancarias"></div>
+        <button class="btn btn-ghost btn-sm" id="btnAgregarCuenta">➕ Agregar cuenta</button>
+        <div style="margin-top:14px;"><button class="btn btn-primary" style="width:auto;" id="btnGuardarCuentas">Guardar cuentas</button></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Planes y precios</h2></div>
+        <div id="planesConfig"></div>
+        <button class="btn btn-ghost btn-sm" id="btnAgregarPlan">➕ Agregar plan</button>
+        <div style="margin-top:14px;"><button class="btn btn-primary" style="width:auto;" id="btnGuardarPlanes">Guardar planes</button></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Profesores</h2></div>
+        <p style="color:var(--text-muted);font-size:13px;">Hector, Cecilia, Carlos, Agustina, Luciano, Gabriel — para agregar o quitar un profe, avisale a soporte AppSur.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ FORMULARIO PÚBLICO DE INSCRIPCIÓN ============ -->
+<div id="inscripcionScreen" style="display:none;">
+  <div class="insc-box">
+    <div id="inscForm">
+      <div class="insc-header">
+        <div class="letter">A</div>
+        <h1>ADDICTIVE GYM</h1>
+        <p>Completá tus datos para inscribirte</p>
+      </div>
+      <div id="inscFormError"></div>
+      <div class="grid-2">
+        <div class="field"><label>Nombre</label><input type="text" id="pubNombre" required></div>
+        <div class="field"><label>Apellido</label><input type="text" id="pubApellido" required></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>DNI</label><input type="text" id="pubDni" required></div>
+        <div class="field"><label>Teléfono (WhatsApp)</label><input type="tel" id="pubTelefono" required placeholder="Ej: 2604123456"></div>
+      </div>
+
+      <div class="field">
+        <label>Elegí tu foto de perfil</label>
+        <div class="photo-upload-big" id="pubPhotoTrigger">
+          <img id="pubPhotoPreview" class="hidden">
+          <div id="pubPhotoPlaceholder">📷<br><span style="font-size:12px;color:var(--text-muted);">Tocá para subir una foto</span></div>
+        </div>
+        <input type="file" id="pubPhotoInput" accept="image/*" class="hidden">
+      </div>
+
+      <div class="field">
+        <label>Elegí tu plan</label>
+        <div id="pubPlanes"></div>
+      </div>
+
+      <div class="field">
+        <label>Elegí tu profe</label>
+        <select id="pubProfesor" required>
+          <option value="">Seleccionar...</option>
+        </select>
+      </div>
+
+      <button class="btn btn-primary" id="pubSubmitBtn">
+        <span id="pubSubmitText">Enviar inscripción</span>
+      </button>
+    </div>
+
+    <div id="inscSuccess" class="insc-success hidden">
+      <div class="big-check">✓</div>
+      <h2 style="font-size:20px;">¡Listo, <span id="inscSuccessName"></span>!</h2>
+      <p style="color:var(--text-muted);margin-top:8px;font-size:14px;">Tu inscripción quedó registrada. En breve el gimnasio te contacta por WhatsApp para confirmar todo.</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ============ MODAL SOCIO ============ -->
+<div class="modal-overlay" id="modalSocio">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modalSocioTitle">Nuevo socio</h3><button class="modal-close" data-close-modal="modalSocio">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="socioId">
+      <div class="photo-upload">
+        <img id="socioFotoPreview" class="photo-preview">
+        <div>
+          <input type="file" id="socioFotoInput" accept="image/*" class="hidden">
+          <button class="btn btn-ghost btn-sm" id="btnSubirFotoSocio">Subir foto</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Nombre</label><input type="text" id="socioNombre"></div>
+        <div class="field"><label>Apellido</label><input type="text" id="socioApellido"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>DNI</label><input type="text" id="socioDni"></div>
+        <div class="field"><label>Teléfono</label><input type="tel" id="socioTelefono"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Plan</label><select id="socioPlan"></select></div>
+        <div class="field"><label>Profesor</label><select id="socioProfesor"></select></div>
+      </div>
+      <div class="field">
+        <label>Estado</label>
+        <select id="socioActivo"><option value="true">Activo</option><option value="false">Inactivo</option></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger hidden" id="btnEliminarSocio">Eliminar</button>
+      <button class="btn btn-ghost" data-close-modal="modalSocio">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto;" id="btnGuardarSocio">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL REGISTRAR PAGO ============ -->
+<div class="modal-overlay" id="modalPago">
+  <div class="modal">
+    <div class="modal-head"><h3>Registrar pago</h3><button class="modal-close" data-close-modal="modalPago">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="pagoSocioId">
+      <p id="pagoSocioNombre" style="font-weight:600;margin-bottom:14px;"></p>
+      <div class="field"><label>Monto</label><input type="number" id="pagoMonto"></div>
+      <div class="field"><label>Fecha de pago</label><input type="date" id="pagoFecha"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close-modal="modalPago">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto;" id="btnConfirmarPago">Confirmar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL RECORDATORIOS MASIVOS ============ -->
+<div class="modal-overlay" id="modalRecordatorios">
+  <div class="modal">
+    <div class="modal-head"><h3>Recordatorios masivos</h3><button class="modal-close" data-close-modal="modalRecordatorios">✕</button></div>
+    <div class="modal-body">
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Se van a abrir de a uno los chats de WhatsApp de los socios con cuota pendiente este mes. Tocá "Enviar y siguiente" en cada uno.</p>
+      <p id="recordCounter" style="font-family:'Rajdhani';font-size:22px;font-weight:700;margin-bottom:16px;"></p>
+      <p id="recordSocioActual" style="font-size:15px;"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close-modal="modalRecordatorios">Cerrar</button>
+      <button class="btn btn-orange" id="btnRecordSiguiente">Enviar y siguiente ▶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   ADDICTIVE GYM — GymControl Pro
+   Pegar acá el firebaseConfig real cuando Álvaro cree el proyecto en
+   Firebase Console (Configuración del proyecto → Tus apps → Web).
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyBJmmRh347yN3YxVs-uSque7qXQpK5AzwQ",
+  authDomain: "appsur-2ffb3.firebaseapp.com",
+  projectId: "appsur-2ffb3",
+  storageBucket: "appsur-2ffb3.firebasestorage.app",
+  messagingSenderId: "392648391903",
+  appId: "1:392648391903:web:c99938ad620b1a62457d6a"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const PROFESORES = ["Hector","Cecilia","Carlos","Agustina","Luciano","Gabriel"];
+
+let currentUid = null;
+let socios = [];
+let profesoresList = [];
+let planes = [];
+let cuentasBancarias = [];
+let gymConfig = {};
+let inscripcionesPendientes = [];
+let cuotasCache = {}; // cache en memoria por mes: "2026-08" -> {socioId: pagoDoc}
+
+let mesActual = new Date(); mesActual.setDate(1);
+let mesActualProf = new Date(); mesActualProf.setDate(1);
+let profeSeleccionado = PROFESORES[0];
+
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+/* ---------------- helpers ---------------- */
+function $(id){ return document.getElementById(id); }
+function toast(msg, isErr){
+  const t = document.createElement('div');
+  t.className = 'toast' + (isErr ? ' err' : '');
+  t.textContent = msg;
+  $('toastWrap').appendChild(t);
+  setTimeout(()=>t.remove(), 4200);
+}
+function fmtMoney(n){ return '$' + (Number(n)||0).toLocaleString('es-AR'); }
+function mesKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function limpiarTelefono(tel){
+  let t = (tel||'').replace(/\D/g,'');
+  if(t.length<=10) t = '549' + t.replace(/^0/,''); // celular AR sin código país
+  else if(!t.startsWith('54')) t = '54' + t;
+  if(!t.startsWith('549')) t = t.replace(/^54/,'549');
+  return t;
+}
+function waLink(tel, msg){
+  return 'https://wa.me/' + limpiarTelefono(tel) + '?text=' + encodeURIComponent(msg);
+}
+function openModal(id){ $(id).classList.add('show'); }
+function closeModal(id){ $(id).classList.remove('show'); }
+document.querySelectorAll('[data-close-modal]').forEach(b=>{
+  b.addEventListener('click', ()=>closeModal(b.dataset.closeModal));
+});
+
+/* ---------------- routing inicial: ¿inscripción pública o panel? ---------------- */
+const params = new URLSearchParams(window.location.search);
+const esInscripcionPublica = params.get('inscripcion') === '1';
+
+if(esInscripcionPublica){
+  $('loader').classList.add('hidden');
+  $('inscripcionScreen').style.display = 'flex';
+  initInscripcionPublica();
+} else {
+  auth.onAuthStateChanged(user=>{
+    $('loader').classList.add('hidden');
+    if(user){
+      currentUid = user.uid;
+      $('loginScreen').style.display='none';
+      $('app').classList.add('show');
+      bootAdminPanel();
+    } else {
+      $('app').classList.remove('show');
+      $('loginScreen').style.display='flex';
+    }
+  });
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+$('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  $('loginError').innerHTML = '';
+  $('loginBtn').innerHTML = '<span class="spinner"></span> Ingresando...';
+  try{
+    await auth.signInWithEmailAndPassword($('loginEmail').value.trim(), $('loginPass').value);
+  }catch(err){
+    $('loginError').innerHTML = '<div class="error-msg">Email o contraseña incorrectos.</div>';
+  }
+  $('loginBtn').textContent = 'Ingresar';
+});
+$('logoutBtn').addEventListener('click', ()=> auth.signOut());
+
+/* ============================================================
+   NAVEGACIÓN
+   ============================================================ */
+document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item[data-view]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));
+    $('view-'+btn.dataset.view).classList.remove('hidden');
+    $('viewTitle').textContent = btn.textContent.trim().replace(/^\S+\s/,'');
+    $('sidebar').classList.remove('open'); $('sidebarOverlay').classList.remove('show');
+    if(btn.dataset.view==='cuotas') renderCuotas();
+    if(btn.dataset.view==='profesores') renderLiquidaciones();
+  });
+});
+$('mobileMenuBtn').addEventListener('click', ()=>{ $('sidebar').classList.add('open'); $('sidebarOverlay').classList.add('show'); });
+$('sidebarOverlay').addEventListener('click', ()=>{ $('sidebar').classList.remove('open'); $('sidebarOverlay').classList.remove('show'); });
+
+/* ============================================================
+   BOOT PANEL ADMIN
+   ============================================================ */
+async function bootAdminPanel(){
+  $('inscLinkBox').value = window.location.origin + window.location.pathname + '?inscripcion=1';
+  $('copyInscLink').addEventListener('click', ()=>{
+    navigator.clipboard.writeText($('inscLinkBox').value);
+    toast('Link copiado ✅');
+  });
+
+  await cargarConfig();
+  await cargarProfesores();
+  await cargarSocios();
+  escucharInscripcionesPendientes();
+  renderStats();
+  renderConfigForm();
+  renderProfeTabs();
+  renderLiquidaciones();
+}
+
+/* ---------------- CONFIG ---------------- */
+async function cargarConfig(){
+  const doc = await db.collection('config_addictive').doc(currentUid).get();
+  if(doc.exists){
+    gymConfig = doc.data();
+    planes = gymConfig.planes || [];
+    cuentasBancarias = gymConfig.cuentasBancarias || [];
+  } else {
+    // valores por defecto la primera vez
+    gymConfig = {
+      nombre:'Addictive Gym', telefono:'2604 403137', email:'addictivegym.ok@gmail.com',
+      instagram:'Addictivegym.ok', direccion:'Av Libertador 1.272', uid: currentUid
+    };
+    planes = [
+      {nombre:'Musculación', precio:40000, horario:'Lunes a viernes 8, 11, 14 y 22hs'},
+      {nombre:'Rehabilitación pre y post cirugías', precio:50000, horario:'Horario a convenir'},
+      {nombre:'Entrenamiento Funcional', precio:30000, horario:'Martes y jueves 7, 15 y 17hs'},
+      {nombre:'Entrenamiento Deportivo', precio:30000, horario:'Horario a convenir'},
+      {nombre:'Entrenamiento Mix', precio:30000, horario:'Lunes, miércoles y viernes 8.30, 14 y 15hs'}
+    ];
+    cuentasBancarias = [
+      {alias:'Bartologym', titular:'Maria Cecilia Araya', banco:'Mercado Pago'},
+      {alias:'Bartolo.3219', titular:'Hector Raul Perez', banco:'Mercado Pago'}
+    ];
+    await db.collection('config_addictive').doc(currentUid).set({...gymConfig, planes, cuentasBancarias});
+  }
+}
+
+function renderConfigForm(){
+  $('cfgNombre').value = gymConfig.nombre||'';
+  $('cfgTelefono').value = gymConfig.telefono||'';
+  $('cfgEmail').value = gymConfig.email||'';
+  $('cfgInstagram').value = gymConfig.instagram||'';
+  $('cfgDireccion').value = gymConfig.direccion||'';
+  renderCuentasBancariasForm();
+  renderPlanesForm();
+}
+$('btnGuardarDatos').addEventListener('click', async ()=>{
+  await db.collection('config_addictive').doc(currentUid).set({
+    nombre:$('cfgNombre').value, telefono:$('cfgTelefono').value, email:$('cfgEmail').value,
+    instagram:$('cfgInstagram').value, direccion:$('cfgDireccion').value, uid: currentUid
+  }, {merge:true});
+  toast('Datos del gimnasio guardados ✅');
+});
+
+function renderCuentasBancariasForm(){
+  $('cuentasBancarias').innerHTML = cuentasBancarias.map((c,i)=>`
+    <div class="grid-2" style="margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+      <div class="field"><label>Alias / CBU</label><input type="text" value="${c.alias||''}" data-cta="${i}" data-f="alias"></div>
+      <div class="field"><label>Titular</label><input type="text" value="${c.titular||''}" data-cta="${i}" data-f="titular"></div>
+    </div>
+  `).join('');
+}
+$('btnAgregarCuenta').addEventListener('click', ()=>{
+  cuentasBancarias.push({alias:'', titular:'', banco:'Mercado Pago'});
+  renderCuentasBancariasForm();
+});
+$('btnGuardarCuentas').addEventListener('click', async ()=>{
+  document.querySelectorAll('[data-cta]').forEach(inp=>{
+    cuentasBancarias[inp.dataset.cta][inp.dataset.f] = inp.value;
+  });
+  await db.collection('config_addictive').doc(currentUid).set({cuentasBancarias}, {merge:true});
+  toast('Cuentas bancarias guardadas ✅');
+});
+
+function renderPlanesForm(){
+  $('planesConfig').innerHTML = planes.map((p,i)=>`
+    <div class="grid-2" style="margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+      <div class="field"><label>Plan</label><input type="text" value="${p.nombre||''}" data-plan="${i}" data-f="nombre"></div>
+      <div class="field"><label>Precio</label><input type="number" value="${p.precio||0}" data-plan="${i}" data-f="precio"></div>
+      <div class="field" style="grid-column:1/-1;"><label>Horario</label><input type="text" value="${p.horario||''}" data-plan="${i}" data-f="horario"></div>
+    </div>
+  `).join('');
+  fillPlanSelects();
+}
+$('btnAgregarPlan').addEventListener('click', ()=>{
+  planes.push({nombre:'', precio:0, horario:''});
+  renderPlanesForm();
+});
+$('btnGuardarPlanes').addEventListener('click', async ()=>{
+  document.querySelectorAll('[data-plan]').forEach(inp=>{
+    const f = inp.dataset.f;
+    planes[inp.dataset.plan][f] = f==='precio' ? Number(inp.value) : inp.value;
+  });
+  await db.collection('config_addictive').doc(currentUid).set({planes}, {merge:true});
+  toast('Planes guardados ✅');
+  fillPlanSelects();
+});
+function fillPlanSelects(){
+  const opts = planes.map(p=>`<option value="${p.nombre}">${p.nombre} — ${fmtMoney(p.precio)}</option>`).join('');
+  $('socioPlan').innerHTML = opts;
+}
+
+/* ---------------- PROFESORES ---------------- */
+async function cargarProfesores(){
+  const snap = await db.collection('profesores_addictive').where('uid','==',currentUid).get();
+  if(snap.empty){
+    const batch = db.batch();
+    PROFESORES.forEach(nombre=>{
+      const ref = db.collection('profesores_addictive').doc();
+      batch.set(ref, {nombre, uid: currentUid});
+    });
+    await batch.commit();
+    const snap2 = await db.collection('profesores_addictive').where('uid','==',currentUid).get();
+    profesoresList = snap2.docs.map(d=>({id:d.id, ...d.data()}));
+  } else {
+    profesoresList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  }
+  $('socioProfesor').innerHTML = profesoresList.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+}
+function renderProfeTabs(){
+  $('profeTabs').innerHTML = profesoresList.map(p=>`
+    <button class="tab-btn ${p.nombre===profeSeleccionado?'active':''}" data-profe="${p.nombre}">${p.nombre}</button>
+  `).join('');
+  document.querySelectorAll('#profeTabs .tab-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      profeSeleccionado = b.dataset.profe;
+      document.querySelectorAll('#profeTabs .tab-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      renderLiquidaciones();
+    });
+  });
+}
+
+/* ---------------- SOCIOS ---------------- */
+async function cargarSocios(){
+  const snap = await db.collection('socios_addictive').where('uid','==',currentUid).get();
+  socios = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  renderSocios();
+  renderStats();
+}
+function profeNombre(id){ const p = profesoresList.find(x=>x.id===id); return p?p.nombre:'—'; }
+
+function renderSocios(filter){
+  const term = (filter||'').toLowerCase();
+  const filtrados = socios.filter(s=>{
+    if(!term) return true;
+    return (s.nombre+' '+s.apellido+' '+(s.dni||'')).toLowerCase().includes(term);
+  });
+  if(filtrados.length===0){
+    $('sociosTableBody').innerHTML='';
+    $('sociosEmpty').classList.remove('hidden');
+    return;
+  }
+  $('sociosEmpty').classList.add('hidden');
+  $('sociosTableBody').innerHTML = filtrados.map(s=>`
+    <tr>
+      <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
+      <td>${s.nombre} ${s.apellido}</td>
+      <td>${s.plan||'—'}</td>
+      <td>${profeNombre(s.profesorId)}</td>
+      <td>${s.telefono||'—'}</td>
+      <td><span class="pill ${s.activo?'ok':'off'}">${s.activo?'Activo':'Inactivo'}</span></td>
+      <td><button class="btn btn-ghost btn-sm" data-edit-socio="${s.id}">Editar</button></td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('[data-edit-socio]').forEach(b=>{
+    b.addEventListener('click', ()=>abrirModalSocio(b.dataset.editSocio));
+  });
+}
+$('searchSocios').addEventListener('input', e=>renderSocios(e.target.value));
+
+$('btnNuevoSocio').addEventListener('click', ()=>abrirModalSocio(null));
+function abrirModalSocio(id){
+  const s = socios.find(x=>x.id===id);
+  $('modalSocioTitle').textContent = s ? 'Editar socio' : 'Nuevo socio';
+  $('socioId').value = id||'';
+  $('socioNombre').value = s?.nombre||'';
+  $('socioApellido').value = s?.apellido||'';
+  $('socioDni').value = s?.dni||'';
+  $('socioTelefono').value = s?.telefono||'';
+  $('socioPlan').value = s?.plan||(planes[0]?.nombre||'');
+  $('socioProfesor').value = s?.profesorId||(profesoresList[0]?.id||'');
+  $('socioActivo').value = s ? String(s.activo) : 'true';
+  $('socioFotoPreview').src = s?.fotoURL || 'https://api.dicebear.com/7.x/initials/svg?seed=Socio';
+  $('btnEliminarSocio').classList.toggle('hidden', !s);
+  openModal('modalSocio');
+}
+$('btnSubirFotoSocio').addEventListener('click', ()=>$('socioFotoInput').click());
+let socioFotoFile = null;
+$('socioFotoInput').addEventListener('change', e=>{
+  socioFotoFile = e.target.files[0];
+  if(socioFotoFile) $('socioFotoPreview').src = URL.createObjectURL(socioFotoFile);
+});
+
+// Comprime la foto a un JPEG chico (máx 500px, calidad 0.72) y la devuelve
+// como base64 lista para guardar directo en el documento de Firestore.
+// Así evitamos necesitar Firebase Storage (que ahora requiere plan Blaze).
+function comprimirFotoBase64(file, maxDim=500, quality=0.72){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > h){ if(w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; } }
+        else { if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+$('btnGuardarSocio').addEventListener('click', async ()=>{
+  const id = $('socioId').value;
+  const btn = $('btnGuardarSocio');
+  btn.innerHTML = '<span class="spinner"></span>';
+  try{
+    let fotoURL = null;
+    const existente = socios.find(x=>x.id===id);
+    if(socioFotoFile){
+      fotoURL = await comprimirFotoBase64(socioFotoFile);
+    }
+    const data = {
+      nombre: $('socioNombre').value.trim(),
+      apellido: $('socioApellido').value.trim(),
+      dni: $('socioDni').value.trim(),
+      telefono: $('socioTelefono').value.trim(),
+      plan: $('socioPlan').value,
+      profesorId: $('socioProfesor').value,
+      activo: $('socioActivo').value === 'true',
+      uid: currentUid
+    };
+    if(fotoURL) data.fotoURL = fotoURL;
+    if(id){
+      await db.collection('socios_addictive').doc(id).update(data);
+    } else {
+      data.fechaInscripcion = firebase.firestore.FieldValue.serverTimestamp();
+      if(!data.fotoURL) data.fotoURL = '';
+      await db.collection('socios_addictive').add(data);
+    }
+    socioFotoFile = null;
+    closeModal('modalSocio');
+    await cargarSocios();
+    toast('Socio guardado ✅');
+  }catch(err){
+    toast('Error al guardar: '+err.message, true);
+  }
+  btn.textContent = 'Guardar';
+});
+$('btnEliminarSocio').addEventListener('click', async ()=>{
+  const id = $('socioId').value;
+  if(!confirm('¿Seguro que querés eliminar este socio?')) return;
+  await db.collection('socios_addictive').doc(id).delete();
+  closeModal('modalSocio');
+  await cargarSocios();
+  toast('Socio eliminado');
+});
+
+/* ---------------- STATS ---------------- */
+function renderStats(){
+  $('statSocios').textContent = socios.filter(s=>s.activo).length;
+  $('statInscPend').textContent = inscripcionesPendientes.length;
+}
+
+/* ============================================================
+   CUOTAS — meses anteriores bloqueados
+   ============================================================ */
+$('mesPrev').addEventListener('click', ()=>{ mesActual.setMonth(mesActual.getMonth()-1); renderCuotas(); });
+$('mesNext').addEventListener('click', ()=>{
+  const hoy = new Date();
+  const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  if(mesKey(mesActual) < mesKey(limite)){ mesActual.setMonth(mesActual.getMonth()+1); renderCuotas(); }
+});
+
+async function renderCuotas(){
+  $('mesLabel').textContent = MESES[mesActual.getMonth()] + ' ' + mesActual.getFullYear();
+  const hoy = new Date();
+  const esMesActualOAnterior = mesKey(mesActual) <= mesKey(hoy);
+  const esMesBloqueado = mesKey(mesActual) < mesKey(new Date(hoy.getFullYear(), hoy.getMonth(),1));
+  $('mesNext').disabled = mesKey(mesActual) >= mesKey(new Date(hoy.getFullYear(), hoy.getMonth(),1));
+
+  const key = mesKey(mesActual);
+  if(!cuotasCache[key]){
+    cuotasCache[key] = {};
+    for(const s of socios){
+      const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos')
+        .where('mesKey','==',key).limit(1).get();
+      if(!snap.empty) cuotasCache[key][s.id] = {id:snap.docs[0].id, ...snap.docs[0].data()};
+    }
+  }
+  const pagosMes = cuotasCache[key];
+  let recaudado = 0, pendientes = 0;
+
+  $('cuotasTableBody').innerHTML = socios.filter(s=>s.activo).map(s=>{
+    const pago = pagosMes[s.id];
+    if(pago) recaudado += Number(pago.monto)||0; else pendientes++;
+    const estado = pago
+      ? '<span class="pill ok">Pagado</span>'
+      : (esMesBloqueado ? '<span class="pill locked">🔒 Mes cerrado</span>' : '<span class="pill pend">Pendiente</span>');
+    const accion = pago
+      ? `<button class="btn btn-ghost btn-sm" data-comprobante="${s.id}">📄 Comprobante</button>`
+      : (esMesBloqueado ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+           <button class="btn btn-orange btn-sm" data-registrar="${s.id}">Registrar pago</button>
+           <button class="btn btn-ghost btn-sm" data-transferencia="${s.id}">🏦 Enviar datos</button>
+         </div>`);
+    return `<tr>
+      <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
+      <td>${s.nombre} ${s.apellido}</td>
+      <td>${s.plan||'—'}</td>
+      <td>${estado}</td>
+      <td>${pago?fmtMoney(pago.monto):'—'}</td>
+      <td>${pago?.fecha||'—'}</td>
+      <td>${accion}</td>
+    </tr>`;
+  }).join('');
+
+  $('statCuotasMes').textContent = fmtMoney(recaudado);
+  $('statPendientes').textContent = pendientes;
+
+  document.querySelectorAll('[data-registrar]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.registrar)));
+  document.querySelectorAll('[data-comprobante]').forEach(b=>b.addEventListener('click', ()=>enviarComprobante(b.dataset.comprobante)));
+  document.querySelectorAll('[data-transferencia]').forEach(b=>b.addEventListener('click', ()=>enviarDatosTransferencia(b.dataset.transferencia)));
+}
+
+function abrirModalPago(socioId){
+  const s = socios.find(x=>x.id===socioId);
+  $('pagoSocioId').value = socioId;
+  $('pagoSocioNombre').textContent = s.nombre+' '+s.apellido;
+  const plan = planes.find(p=>p.nombre===s.plan);
+  $('pagoMonto').value = plan?plan.precio:'';
+  $('pagoFecha').value = new Date().toISOString().slice(0,10);
+  openModal('modalPago');
+}
+$('btnConfirmarPago').addEventListener('click', async ()=>{
+  const socioId = $('pagoSocioId').value;
+  const key = mesKey(mesActual);
+  const fecha = $('pagoFecha').value;
+  const diaPago = Number(fecha.split('-')[2]);
+  const data = {
+    monto: Number($('pagoMonto').value),
+    fecha,
+    dia: diaPago,
+    mesKey: key,
+    uid: currentUid,
+    creado: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  await db.collection('socios_addictive').doc(socioId).collection('pagos').add(data);
+  delete cuotasCache[key]; // invalidar cache de ese mes
+  closeModal('modalPago');
+  await renderCuotas();
+  toast('Pago registrado ✅');
+});
+
+function enviarComprobante(socioId){
+  const s = socios.find(x=>x.id===socioId);
+  const pago = cuotasCache[mesKey(mesActual)][socioId];
+  const msg = `Hola ${s.nombre}! Te confirmamos tu comprobante de pago en *${gymConfig.nombre}*:\n\n` +
+    `Plan: ${s.plan}\nMonto: ${fmtMoney(pago.monto)}\nMes: ${MESES[mesActual.getMonth()]} ${mesActual.getFullYear()}\nFecha de pago: ${pago.fecha}\n\n¡Gracias por entrenar con nosotros! 💪`;
+  window.open(waLink(s.telefono, msg), '_blank');
+}
+function enviarDatosTransferencia(socioId){
+  const s = socios.find(x=>x.id===socioId);
+  let msg = `Hola ${s.nombre}! Te paso los datos para abonar tu cuota de *${gymConfig.nombre}*:\n\n`;
+  cuentasBancarias.forEach(c=>{ msg += `💳 ${c.banco||'Mercado Pago'}\nAlias/CBU: ${c.alias}\nTitular: ${c.titular}\n\n`; });
+  msg += 'Cualquier duda, escribinos por acá 🙌';
+  window.open(waLink(s.telefono, msg), '_blank');
+}
+
+/* ---------------- RECORDATORIOS MASIVOS ---------------- */
+let recordQueue = [];
+let recordIndex = 0;
+async function abrirRecordatorios(){
+  const key = mesKey(mesActual);
+  if(!cuotasCache[key]) await renderCuotas();
+  const pagosMes = cuotasCache[key];
+  recordQueue = socios.filter(s=>s.activo && !pagosMes[s.id]);
+  recordIndex = 0;
+  if(recordQueue.length===0){ toast('No hay socios con cuota pendiente este mes'); return; }
+  openModal('modalRecordatorios');
+  mostrarRecordatorioActual();
+}
+function mostrarRecordatorioActual(){
+  if(recordIndex >= recordQueue.length){
+    $('recordCounter').textContent = '¡Listo! 🎉';
+    $('recordSocioActual').textContent = 'Se enviaron todos los recordatorios.';
+    $('btnRecordSiguiente').classList.add('hidden');
+    return;
+  }
+  const s = recordQueue[recordIndex];
+  $('recordCounter').textContent = `${recordIndex+1} / ${recordQueue.length}`;
+  $('recordSocioActual').textContent = `Siguiente: ${s.nombre} ${s.apellido} (${s.telefono||'sin teléfono'})`;
+}
+$('btnRecordSiguiente').addEventListener('click', ()=>{
+  const s = recordQueue[recordIndex];
+  if(s && s.telefono){
+    const msg = `Hola ${s.nombre}! Te recordamos que tenés pendiente el pago de tu cuota de *${gymConfig.nombre}* correspondiente a ${MESES[mesActual.getMonth()]}. ¡Te esperamos! 💪`;
+    window.open(waLink(s.telefono, msg), '_blank');
+  }
+  recordIndex++;
+  mostrarRecordatorioActual();
+});
+
+/* ============================================================
+   LIQUIDACIONES POR PROFESOR
+   ============================================================ */
+$('mesPrevProf').addEventListener('click', ()=>{ mesActualProf.setMonth(mesActualProf.getMonth()-1); renderLiquidaciones(); });
+$('mesNextProf').addEventListener('click', ()=>{ mesActualProf.setMonth(mesActualProf.getMonth()+1); renderLiquidaciones(); });
+$('corteAl10').addEventListener('change', renderLiquidaciones);
+
+async function renderLiquidaciones(){
+  if(!profesoresList.length) return;
+  $('mesLabelProf').textContent = MESES[mesActualProf.getMonth()] + ' ' + mesActualProf.getFullYear();
+  const profeObj = profesoresList.find(p=>p.nombre===profeSeleccionado);
+  if(!profeObj) return;
+  const alumnos = socios.filter(s=>s.profesorId===profeObj.id && s.activo);
+  const key = mesKey(mesActualProf);
+  const soloHasta10 = $('corteAl10').checked;
+
+  let total = 0;
+  const filas = [];
+  for(const s of alumnos){
+    const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos').where('mesKey','==',key).limit(1).get();
+    let pago = null;
+    if(!snap.empty){
+      const p = {id:snap.docs[0].id, ...snap.docs[0].data()};
+      if(!soloHasta10 || (p.dia && p.dia<=10)) pago = p;
+    }
+    if(pago) total += Number(pago.monto)||0;
+    filas.push({socio:s, pago});
+  }
+
+  $('profAlumnos').textContent = alumnos.length;
+  $('profTotal').textContent = fmtMoney(total);
+  $('profeTableBody').innerHTML = filas.map(f=>`
+    <tr>
+      <td>${f.socio.nombre} ${f.socio.apellido}</td>
+      <td>${f.socio.plan||'—'}</td>
+      <td>${f.pago ? '<span class="pill ok">Pagado</span>' : '<span class="pill pend">Pendiente / fuera de corte</span>'}</td>
+      <td>${f.pago ? fmtMoney(f.pago.monto) : '—'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Este profe todavía no tiene alumnos asignados.</td></tr>';
+}
+
+/* ============================================================
+   INSCRIPCIONES PENDIENTES (panel admin)
+   ============================================================ */
+function escucharInscripcionesPendientes(){
+  db.collection('inscripciones_addictive').where('uid','==',currentUid).where('estado','==','pendiente')
+    .onSnapshot(snap=>{
+      inscripcionesPendientes = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      $('inscBadge').textContent = inscripcionesPendientes.length;
+      $('inscBadge').classList.toggle('hidden', inscripcionesPendientes.length===0);
+      renderInscripciones();
+      renderStats();
+    });
+}
+function renderInscripciones(){
+  if(inscripcionesPendientes.length===0){
+    $('inscTableBody').innerHTML=''; $('inscEmpty').classList.remove('hidden'); return;
+  }
+  $('inscEmpty').classList.add('hidden');
+  $('inscTableBody').innerHTML = inscripcionesPendientes.map(i=>`
+    <tr>
+      <td><img class="avatar" src="${i.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(i.nombre)}"></td>
+      <td>${i.nombre} ${i.apellido}</td>
+      <td>${i.plan||'—'}</td>
+      <td>${i.profesorNombre||'—'}</td>
+      <td>${i.telefono||'—'}</td>
+      <td>${i.fecha||'—'}</td>
+      <td><button class="btn btn-orange btn-sm" data-aprobar="${i.id}">✔ Aprobar</button>
+          <button class="btn btn-danger btn-sm" data-rechazar="${i.id}">✕</button></td>
+    </tr>
+  `).join('');
+  document.querySelectorAll('[data-aprobar]').forEach(b=>b.addEventListener('click', ()=>aprobarInscripcion(b.dataset.aprobar)));
+  document.querySelectorAll('[data-rechazar]').forEach(b=>b.addEventListener('click', ()=>rechazarInscripcion(b.dataset.rechazar)));
+}
+async function aprobarInscripcion(id){
+  const i = inscripcionesPendientes.find(x=>x.id===id);
+  await db.collection('socios_addictive').add({
+    nombre:i.nombre, apellido:i.apellido, dni:i.dni, telefono:i.telefono,
+    fotoURL:i.fotoURL||'', plan:i.plan, profesorId:i.profesorId, activo:true,
+    uid: currentUid, fechaInscripcion: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  await db.collection('inscripciones_addictive').doc(id).update({estado:'aprobada'});
+  await cargarSocios();
+  toast('Socio aprobado y agregado ✅');
+}
+async function rechazarInscripcion(id){
+  await db.collection('inscripciones_addictive').doc(id).update({estado:'rechazada'});
+  toast('Inscripción rechazada');
+}
+
+/* ============================================================
+   FORMULARIO PÚBLICO DE INSCRIPCIÓN (?inscripcion=1)
+   Nota: acá no hay currentUid de auth (no hay login). El uid del
+   gimnasio va hardcodeado porque este link es exclusivo de Addictive Gym.
+   ============================================================ */
+const GYM_UID_PUBLICO = "p6ROnh1ov4gL3x3YxbEAdnHkLwF2";
+
+async function initInscripcionPublica(){
+  // cargar planes y profes desde config pública (requiere reglas de lectura pública puntual)
+  try{
+    const cfgDoc = await db.collection('config_addictive').doc(GYM_UID_PUBLICO).get();
+    const cfg = cfgDoc.exists ? cfgDoc.data() : {planes:[]};
+    $('pubPlanes').innerHTML = (cfg.planes||[]).map((p,idx)=>`
+      <div class="plan-option" data-plan-idx="${idx}">
+        <div class="pname">${p.nombre} <span class="pprice">${fmtMoney(p.precio)}</span></div>
+        <div class="pdet">${p.horario||''}</div>
+      </div>
+    `).join('');
+    window.__planesPublicos = cfg.planes||[];
+    document.querySelectorAll('.plan-option').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        document.querySelectorAll('.plan-option').forEach(x=>x.classList.remove('sel'));
+        el.classList.add('sel');
+        el.dataset.selected = 'true';
+      });
+    });
+
+    const profSnap = await db.collection('profesores_addictive').where('uid','==',GYM_UID_PUBLICO).get();
+    window.__profesoresPublicos = profSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    $('pubProfesor').innerHTML = '<option value="">Seleccionar...</option>' +
+      window.__profesoresPublicos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  }catch(err){
+    console.error(err);
+  }
+}
+
+let pubFotoFile = null;
+$('pubPhotoTrigger').addEventListener('click', ()=>$('pubPhotoInput').click());
+$('pubPhotoInput').addEventListener('change', e=>{
+  pubFotoFile = e.target.files[0];
+  if(pubFotoFile){
+    $('pubPhotoPreview').src = URL.createObjectURL(pubFotoFile);
+    $('pubPhotoPreview').classList.remove('hidden');
+    $('pubPhotoPlaceholder').classList.add('hidden');
+  }
+});
+
+$('pubSubmitBtn')?.addEventListener('click', async ()=>{
+  $('inscFormError').innerHTML = '';
+  const nombre = $('pubNombre').value.trim();
+  const apellido = $('pubApellido').value.trim();
+  const dni = $('pubDni').value.trim();
+  const telefono = $('pubTelefono').value.trim();
+  const planSel = document.querySelector('.plan-option.sel');
+  const profesorId = $('pubProfesor').value;
+
+  if(!nombre||!apellido||!dni||!telefono||!planSel||!profesorId){
+    $('inscFormError').innerHTML = '<div class="error-msg">Completá todos los campos y elegí un plan y un profe.</div>';
+    return;
+  }
+  $('pubSubmitText').innerHTML = '<span class="spinner"></span> Enviando...';
+  try{
+    let fotoURL = '';
+    if(pubFotoFile){
+      fotoURL = await comprimirFotoBase64(pubFotoFile);
+    }
+    const plan = window.__planesPublicos[planSel.dataset.planIdx];
+    const profe = window.__profesoresPublicos.find(p=>p.id===profesorId);
+    await db.collection('inscripciones_addictive').add({
+      nombre, apellido, dni, telefono, fotoURL,
+      plan: plan.nombre, profesorId, profesorNombre: profe?profe.nombre:'',
+      estado:'pendiente', uid: GYM_UID_PUBLICO,
+      fecha: new Date().toISOString().slice(0,10),
+      creado: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    $('inscForm').classList.add('hidden');
+    $('inscSuccess').classList.remove('hidden');
+    $('inscSuccessName').textContent = nombre;
+  }catch(err){
+    $('inscFormError').innerHTML = '<div class="error-msg">Ocurrió un error, probá de nuevo o escribinos por WhatsApp.</div>';
+    console.error(err);
+  }
+  $('pubSubmitText').textContent = 'Enviar inscripción';
+});
+
+$('btnRecordatoriosMasivos')?.addEventListener('click', abrirRecordatorios);
+</script>
+
+</body>
+</html>
