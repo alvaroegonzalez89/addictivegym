@@ -563,6 +563,11 @@ const db = firebase.firestore();
 
 const PROFESORES = ["Hector","Cecilia","Carlos","Agustina","Luciano","Gabriel"];
 
+// UID del admin de Addictive Gym. Lo necesita el formulario público de
+// inscripción (?inscripcion=1), que no tiene login, para saber a qué
+// gimnasio pertenece cada inscripción/consulta de planes y profes.
+const GYM_UID_PUBLICO = "p6ROnh1ov4gL3x3YxbEAdnHkLwF2";
+
 let currentUid = null;
 let socios = [];
 let profesoresList = [];
@@ -1180,7 +1185,6 @@ async function rechazarInscripcion(id){
    Nota: acá no hay currentUid de auth (no hay login). El uid del
    gimnasio va hardcodeado porque este link es exclusivo de Addictive Gym.
    ============================================================ */
-const GYM_UID_PUBLICO = "p6ROnh1ov4gL3x3YxbEAdnHkLwF2";
 
 async function initInscripcionPublica(){
   // cargar planes y profes desde config pública (requiere reglas de lectura pública puntual)
@@ -1208,6 +1212,7 @@ async function initInscripcionPublica(){
       window.__profesoresPublicos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
   }catch(err){
     console.error(err);
+    $('pubPlanes').innerHTML = '<div class="error-msg">No pudimos cargar los planes. Por favor, escribinos por WhatsApp para inscribirte o intentá de nuevo en unos minutos.</div>';
   }
 }
 
