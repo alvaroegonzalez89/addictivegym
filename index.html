@@ -334,6 +334,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
             </div>
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+          <input type="checkbox" id="soloPagosHasta10" style="width:16px;height:16px;">
+          Pagos hasta el 10 (mostrar solo los socios que pagaron hasta el día 10 de este mes)
+        </label>
         <table>
           <thead><tr><th></th><th>Socio</th><th>Plan</th><th>Estado</th><th>Monto pagado</th><th>Fecha pago</th><th></th></tr></thead>
           <tbody id="cuotasTableBody"></tbody>
@@ -353,13 +357,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
           </div>
         </div>
         <div class="tabs" id="profeTabs"></div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-          <input type="checkbox" id="corteAl10" checked style="width:16px;height:16px;">
-          Solo contar pagos hechos hasta el día 10 del mes (corte de liquidación)
-        </label>
         <div class="stats-row" style="margin-bottom:18px;">
           <div class="stat-card teal"><div class="num" id="profAlumnos">0</div><div class="lbl">Alumnos asignados</div></div>
-          <div class="stat-card orange"><div class="num" id="profTotal">$0</div><div class="lbl">Total a liquidar</div></div>
+          <div class="stat-card orange"><div class="num" id="profTotal">$0</div><div class="lbl">Total cuotas cobradas</div></div>
+          <div class="stat-card teal"><div class="num" id="profLiquidacion">$0</div><div class="lbl" id="profLiquidacionLbl">Liquidación (70%)</div></div>
         </div>
         <table>
           <thead><tr><th>Alumno</th><th>Plan</th><th>Estado cuota</th><th>Monto</th></tr></thead>
@@ -410,7 +411,12 @@ tr:hover td{background:rgba(255,255,255,.02);}
 
       <div class="card">
         <div class="card-head"><h2>Profesores</h2></div>
-        <p style="color:var(--text-muted);font-size:13px;">Hector, Cecilia, Carlos, Agustina, Luciano, Gabriel — para agregar o quitar un profe, avisale a soporte AppSur.</p>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px;">Hector, Cecilia, Carlos, Agustina, Luciano, Gabriel — para agregar o quitar un profe, avisale a soporte AppSur.</p>
+        <div class="field" style="max-width:220px;">
+          <label>Porcentaje de liquidación a profes</label>
+          <input type="number" id="cfgPorcLiquidacion" min="0" max="100">
+        </div>
+        <button class="btn btn-primary" style="width:auto;" id="btnGuardarPorcLiquidacion">Guardar porcentaje</button>
       </div>
     </section>
   </main>
@@ -701,7 +707,8 @@ async function cargarConfig(){
     // valores por defecto la primera vez
     gymConfig = {
       nombre:'Addictive Gym', telefono:'2604 403137', email:'addictivegym.ok@gmail.com',
-      instagram:'Addictivegym.ok', direccion:'Av Libertador 1.272', uid: currentUid
+      instagram:'Addictivegym.ok', direccion:'Av Libertador 1.272', uid: currentUid,
+      porcentajeLiquidacion: 70
     };
     planes = [
       {nombre:'Musculación', precio:40000, horario:'Lunes a viernes 8, 11, 14 y 22hs'},
@@ -724,6 +731,7 @@ function renderConfigForm(){
   $('cfgEmail').value = gymConfig.email||'';
   $('cfgInstagram').value = gymConfig.instagram||'';
   $('cfgDireccion').value = gymConfig.direccion||'';
+  $('cfgPorcLiquidacion').value = gymConfig.porcentajeLiquidacion ?? 70;
   renderCuentasBancariasForm();
   renderPlanesForm();
 }
@@ -733,6 +741,13 @@ $('btnGuardarDatos').addEventListener('click', async ()=>{
     instagram:$('cfgInstagram').value, direccion:$('cfgDireccion').value, uid: currentUid
   }, {merge:true});
   toast('Datos del gimnasio guardados');
+});
+$('btnGuardarPorcLiquidacion').addEventListener('click', async ()=>{
+  const pct = Number($('cfgPorcLiquidacion').value) || 0;
+  gymConfig.porcentajeLiquidacion = pct;
+  await db.collection('config_addictive').doc(currentUid).set({porcentajeLiquidacion: pct}, {merge:true});
+  toast('Porcentaje de liquidación guardado');
+  renderLiquidaciones();
 });
 
 function renderCuentasBancariasForm(){
@@ -961,6 +976,7 @@ $('mesNext').addEventListener('click', ()=>{
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
   if(mesKey(mesActual) < mesKey(limite)){ mesActual.setMonth(mesActual.getMonth()+1); renderCuotas(); }
 });
+$('soloPagosHasta10').addEventListener('change', renderCuotas);
 
 async function renderCuotas(){
   $('mesLabel').textContent = MESES[mesActual.getMonth()] + ' ' + mesActual.getFullYear();
@@ -980,10 +996,20 @@ async function renderCuotas(){
   }
   const pagosMes = cuotasCache[key];
   let recaudado = 0, pendientes = 0;
-
-  $('cuotasTableBody').innerHTML = socios.filter(s=>s.activo).map(s=>{
+  socios.filter(s=>s.activo).forEach(s=>{
     const pago = pagosMes[s.id];
     if(pago) recaudado += Number(pago.monto)||0; else pendientes++;
+  });
+
+  const soloHasta10 = $('soloPagosHasta10').checked;
+  const sociosAMostrar = socios.filter(s=>s.activo).filter(s=>{
+    if(!soloHasta10) return true;
+    const pago = pagosMes[s.id];
+    return pago && pago.dia && pago.dia <= 10;
+  });
+
+  $('cuotasTableBody').innerHTML = sociosAMostrar.map(s=>{
+    const pago = pagosMes[s.id];
     const estado = pago
       ? '<span class="pill ok">Pagado</span>'
       : (esMesBloqueado ? '<span class="pill locked"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span> Mes cerrado</span>' : '<span class="pill pend">Pendiente</span>');
@@ -1095,7 +1121,6 @@ $('btnRecordSiguiente').addEventListener('click', ()=>{
    ============================================================ */
 $('mesPrevProf').addEventListener('click', ()=>{ mesActualProf.setMonth(mesActualProf.getMonth()-1); renderLiquidaciones(); });
 $('mesNextProf').addEventListener('click', ()=>{ mesActualProf.setMonth(mesActualProf.getMonth()+1); renderLiquidaciones(); });
-$('corteAl10').addEventListener('change', renderLiquidaciones);
 
 async function renderLiquidaciones(){
   if(!profesoresList.length) return;
@@ -1104,28 +1129,29 @@ async function renderLiquidaciones(){
   if(!profeObj) return;
   const alumnos = socios.filter(s=>s.profesorId===profeObj.id && s.activo);
   const key = mesKey(mesActualProf);
-  const soloHasta10 = $('corteAl10').checked;
 
   let total = 0;
   const filas = [];
   for(const s of alumnos){
     const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos').where('mesKey','==',key).limit(1).get();
     let pago = null;
-    if(!snap.empty){
-      const p = {id:snap.docs[0].id, ...snap.docs[0].data()};
-      if(!soloHasta10 || (p.dia && p.dia<=10)) pago = p;
-    }
+    if(!snap.empty) pago = {id:snap.docs[0].id, ...snap.docs[0].data()};
     if(pago) total += Number(pago.monto)||0;
     filas.push({socio:s, pago});
   }
 
+  const pct = gymConfig.porcentajeLiquidacion ?? 70;
+  const liquidacion = total * pct / 100;
+
   $('profAlumnos').textContent = alumnos.length;
   $('profTotal').textContent = fmtMoney(total);
+  $('profLiquidacion').textContent = fmtMoney(liquidacion);
+  $('profLiquidacionLbl').textContent = `Liquidación (${pct}%)`;
   $('profeTableBody').innerHTML = filas.map(f=>`
     <tr>
       <td>${f.socio.nombre} ${f.socio.apellido}</td>
       <td>${f.socio.plan||'—'}</td>
-      <td>${f.pago ? '<span class="pill ok">Pagado</span>' : '<span class="pill pend">Pendiente / fuera de corte</span>'}</td>
+      <td>${f.pago ? '<span class="pill ok">Pagado</span>' : '<span class="pill pend">Pendiente</span>'}</td>
       <td>${f.pago ? fmtMoney(f.pago.monto) : '—'}</td>
     </tr>
   `).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Este profe todavía no tiene alumnos asignados.</td></tr>';
