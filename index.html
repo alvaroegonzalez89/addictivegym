@@ -142,11 +142,11 @@ main{padding:28px 32px;overflow-y:auto;height:100vh;}
 
 table{width:100%;border-collapse:collapse;}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding:10px 12px;border-bottom:1px solid var(--border);}
-.th-sort{cursor:pointer;user-select:none;transition:color .15s;white-space:nowrap;}
-.th-sort:hover{color:var(--text);}
-.th-sort.active{color:var(--teal-light);}
-.th-sort .sort-arrow{display:inline-block;margin-left:4px;opacity:.4;font-size:10px;}
-.th-sort.active .sort-arrow{opacity:1;}
+.th-sort,.th-sort-cuotas{cursor:pointer;user-select:none;transition:color .15s;white-space:nowrap;}
+.th-sort:hover,.th-sort-cuotas:hover{color:var(--text);}
+.th-sort.active,.th-sort-cuotas.active{color:var(--teal-light);}
+.th-sort .sort-arrow,.th-sort-cuotas .sort-arrow{display:inline-block;margin-left:4px;opacity:.4;font-size:10px;}
+.th-sort.active .sort-arrow,.th-sort-cuotas.active .sort-arrow{opacity:1;}
 td{padding:12px;border-bottom:1px solid var(--border);font-size:14px;}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:rgba(255,255,255,.02);}
@@ -352,7 +352,15 @@ tr:hover td{background:rgba(255,255,255,.02);}
           Pagos hasta el 10 (mostrar solo los socios que pagaron hasta el día 10 de este mes)
         </label>
         <table>
-          <thead><tr><th></th><th>Socio</th><th>Plan</th><th>Estado</th><th>Monto pagado</th><th>Fecha pago</th><th></th></tr></thead>
+          <thead><tr>
+            <th></th>
+            <th class="th-sort-cuotas" data-sort-cuotas="socio">Socio</th>
+            <th class="th-sort-cuotas" data-sort-cuotas="plan">Plan</th>
+            <th class="th-sort-cuotas" data-sort-cuotas="estado">Estado</th>
+            <th class="th-sort-cuotas" data-sort-cuotas="monto">Monto pagado</th>
+            <th class="th-sort-cuotas" data-sort-cuotas="fecha">Fecha pago</th>
+            <th></th>
+          </tr></thead>
           <tbody id="cuotasTableBody"></tbody>
         </table>
       </div>
@@ -1055,6 +1063,50 @@ async function cargarPagosMes(key){
   return mapa;
 }
 
+let cuotasSortField = 'socio';
+let cuotasSortDir = 'asc';
+
+function valorOrdenCuota(s, pagosMes, field){
+  const pago = pagosMes[s.id];
+  switch(field){
+    case 'socio': return (s.nombre+' '+s.apellido).toLowerCase();
+    case 'plan': return (s.plan||'').toLowerCase();
+    case 'estado': return pago ? 0 : 1;
+    case 'monto': return pago ? Number(pago.monto)||0 : -1;
+    case 'fecha': return pago ? pago.fecha : '';
+    default: return '';
+  }
+}
+function ordenarCuotas(lista, pagosMes){
+  const dir = cuotasSortDir === 'asc' ? 1 : -1;
+  return [...lista].sort((a,b)=>{
+    const va = valorOrdenCuota(a, pagosMes, cuotasSortField), vb = valorOrdenCuota(b, pagosMes, cuotasSortField);
+    if(va < vb) return -1*dir;
+    if(va > vb) return 1*dir;
+    return 0;
+  });
+}
+document.querySelectorAll('.th-sort-cuotas').forEach(th=>{
+  th.innerHTML = th.textContent + ' <span class="sort-arrow">▲</span>';
+  if(th.dataset.sortCuotas === cuotasSortField) th.classList.add('active');
+  th.addEventListener('click', ()=>{
+    const field = th.dataset.sortCuotas;
+    if(cuotasSortField === field){
+      cuotasSortDir = cuotasSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      cuotasSortField = field;
+      cuotasSortDir = 'asc';
+    }
+    document.querySelectorAll('.th-sort-cuotas').forEach(x=>{
+      x.classList.remove('active');
+      x.querySelector('.sort-arrow').textContent = '▲';
+    });
+    th.classList.add('active');
+    th.querySelector('.sort-arrow').textContent = cuotasSortDir === 'asc' ? '▲' : '▼';
+    renderCuotas();
+  });
+});
+
 async function renderCuotas(){
   $('mesLabel').textContent = MESES[mesActual.getMonth()] + ' ' + mesActual.getFullYear();
   const hoy = new Date();
@@ -1071,11 +1123,12 @@ async function renderCuotas(){
   });
 
   const soloHasta10 = $('soloPagosHasta10').checked;
-  const sociosAMostrar = socios.filter(s=>s.activo).filter(s=>{
+  let sociosAMostrar = socios.filter(s=>s.activo).filter(s=>{
     if(!soloHasta10) return true;
     const pago = pagosMes[s.id];
     return pago && pago.dia && pago.dia <= 10;
   });
+  sociosAMostrar = ordenarCuotas(sociosAMostrar, pagosMes);
 
   $('cuotasTableBody').innerHTML = sociosAMostrar.map(s=>{
     const pago = pagosMes[s.id];
