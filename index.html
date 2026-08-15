@@ -324,6 +324,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
             <th class="th-sort" data-sort="plan">Plan</th>
             <th class="th-sort" data-sort="profe">Profe</th>
             <th class="th-sort" data-sort="telefono">Teléfono</th>
+            <th class="th-sort" data-sort="nacimiento">Nacimiento</th>
             <th class="th-sort" data-sort="estado">Estado</th>
             <th></th>
           </tr></thead>
@@ -625,6 +626,11 @@ function toast(msg, isErr){
   setTimeout(()=>t.remove(), 4200);
 }
 function fmtMoney(n){ return '$' + (Number(n)||0).toLocaleString('es-AR'); }
+function fmtFechaNac(iso){
+  if(!iso) return '—';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
 function mesKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
 function limpiarTelefono(tel){
   let t = (tel||'').replace(/\D/g,'');
@@ -863,6 +869,7 @@ function valorOrdenSocio(s, field){
     case 'plan': return (s.plan||'').toLowerCase();
     case 'profe': return profeNombre(s.profesorId).toLowerCase();
     case 'telefono': return s.telefono||'';
+    case 'nacimiento': return s.fechaNacimiento ? s.fechaNacimiento.slice(5) : '99-99';
     case 'estado': return s.activo ? 0 : 1;
     default: return '';
   }
@@ -925,12 +932,19 @@ function renderSocios(filter){
       <td>${s.plan||'—'}</td>
       <td>${profeNombre(s.profesorId)}</td>
       <td>${s.telefono||'—'}</td>
+      <td>${fmtFechaNac(s.fechaNacimiento)}</td>
       <td><span class="pill ${s.activo?'ok':'off'}">${s.activo?'Activo':'Inactivo'}</span></td>
-      <td><button class="btn btn-ghost btn-sm" data-edit-socio="${s.id}">Editar</button></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" data-edit-socio="${s.id}">Editar</button>
+        <button class="btn btn-ghost btn-sm" data-cumple="${s.id}" title="Enviar saludo de cumpleaños"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M20 21v-8H4v8"></path><path d="M2 21h20"></path><path d="M7 8v3"></path><path d="M12 8v3"></path><path d="M17 8v3"></path><path d="M7 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path><path d="M12 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path><path d="M17 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path><path d="M4 12h16v3a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"></path></svg></span> Cumpleaños</button>
+      </td>
     </tr>
   `).join('');
   document.querySelectorAll('[data-edit-socio]').forEach(b=>{
     b.addEventListener('click', ()=>abrirModalSocio(b.dataset.editSocio));
+  });
+  document.querySelectorAll('[data-cumple]').forEach(b=>{
+    b.addEventListener('click', ()=>enviarCumpleanos(b.dataset.cumple));
   });
 }
 $('searchSocios').addEventListener('input', e=>renderSocios(e.target.value));
@@ -1224,6 +1238,14 @@ function enviarDatosTransferencia(socioId){
 function enviarRecordatorioIndividual(socioId){
   const s = socios.find(x=>x.id===socioId);
   const msg = `Hola ${s.nombre}! Te recordamos que tenés pendiente el pago de tu cuota de *${gymConfig.nombre}* correspondiente a ${MESES[mesActual.getMonth()]}. ¡Te esperamos! 💪`;
+  window.open(waLink(s.telefono, msg), '_blank');
+}
+function enviarCumpleanos(socioId){
+  const s = socios.find(x=>x.id===socioId);
+  const msg = `🎉🎂 ¡Feliz cumpleaños, ${s.nombre}! 🎂🎉\n\n` +
+    `Todo el equipo de *${gymConfig.nombre}* te desea un día espectacular, lleno de energía para seguir rompiéndola en cada entrenamiento.\n\n` +
+    `Que este nuevo año te traiga mucha fuerza, salud y todos los logros que te propongas, dentro y fuera del gym. 💪🔥\n\n` +
+    `¡Nos vemos pronto para festejarlo entrenando como siempre! Un abrazo enorme de todo el equipo. 🙌`;
   window.open(waLink(s.telefono, msg), '_blank');
 }
 
