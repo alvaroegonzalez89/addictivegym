@@ -440,6 +440,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
         <div class="field"><label>DNI</label><input type="text" id="pubDni" required></div>
         <div class="field"><label>Teléfono (WhatsApp)</label><input type="tel" id="pubTelefono" required placeholder="Ej: 2604123456"></div>
       </div>
+      <div class="field"><label>Fecha de nacimiento</label><input type="date" id="pubFechaNacimiento" required></div>
 
       <div class="field">
         <label>Elegí tu foto de perfil</label>
@@ -498,6 +499,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
         <div class="field"><label>DNI</label><input type="text" id="socioDni"></div>
         <div class="field"><label>Teléfono</label><input type="tel" id="socioTelefono"></div>
       </div>
+      <div class="field"><label>Fecha de nacimiento</label><input type="date" id="socioFechaNacimiento"></div>
       <div class="grid-2">
         <div class="field"><label>Plan</label><select id="socioPlan"></select></div>
         <div class="field"><label>Profesor</label><select id="socioProfesor"></select></div>
@@ -833,6 +835,7 @@ function renderProfeTabs(){
 async function cargarSocios(){
   const snap = await db.collection('socios_addictive').where('uid','==',currentUid).get();
   socios = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  socios.sort((a,b)=> (a.apellido+' '+a.nombre).localeCompare(b.apellido+' '+b.nombre, 'es', {sensitivity:'base'}));
   renderSocios();
   renderStats();
 }
@@ -876,6 +879,7 @@ function abrirModalSocio(id){
   $('socioApellido').value = s?.apellido||'';
   $('socioDni').value = s?.dni||'';
   $('socioTelefono').value = s?.telefono||'';
+  $('socioFechaNacimiento').value = s?.fechaNacimiento||'';
   $('socioPlan').value = s?.plan||(planes[0]?.nombre||'');
   $('socioProfesor').value = s?.profesorId||(profesoresList[0]?.id||'');
   $('socioActivo').value = s ? String(s.activo) : 'true';
@@ -930,6 +934,7 @@ $('btnGuardarSocio').addEventListener('click', async ()=>{
       apellido: $('socioApellido').value.trim(),
       dni: $('socioDni').value.trim(),
       telefono: $('socioTelefono').value.trim(),
+      fechaNacimiento: $('socioFechaNacimiento').value,
       plan: $('socioPlan').value,
       profesorId: $('socioProfesor').value,
       activo: $('socioActivo').value === 'true',
@@ -978,6 +983,22 @@ $('mesNext').addEventListener('click', ()=>{
 });
 $('soloPagosHasta10').addEventListener('change', renderCuotas);
 
+// Trae los pagos del mes de TODOS los socios en paralelo y los cachea.
+// La usan tanto Cuotas como Liquidaciones, así evitamos repetir consultas
+// a Firestore cada vez que se cambia de mes o de profesor.
+async function cargarPagosMes(key){
+  if(cuotasCache[key]) return cuotasCache[key];
+  const resultados = await Promise.all(socios.map(async s=>{
+    const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos')
+      .where('mesKey','==',key).limit(1).get();
+    return snap.empty ? null : [s.id, {id:snap.docs[0].id, ...snap.docs[0].data()}];
+  }));
+  const mapa = {};
+  resultados.forEach(r=>{ if(r) mapa[r[0]] = r[1]; });
+  cuotasCache[key] = mapa;
+  return mapa;
+}
+
 async function renderCuotas(){
   $('mesLabel').textContent = MESES[mesActual.getMonth()] + ' ' + mesActual.getFullYear();
   const hoy = new Date();
@@ -986,15 +1007,7 @@ async function renderCuotas(){
   $('mesNext').disabled = mesKey(mesActual) >= mesKey(new Date(hoy.getFullYear(), hoy.getMonth(),1));
 
   const key = mesKey(mesActual);
-  if(!cuotasCache[key]){
-    cuotasCache[key] = {};
-    for(const s of socios){
-      const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos')
-        .where('mesKey','==',key).limit(1).get();
-      if(!snap.empty) cuotasCache[key][s.id] = {id:snap.docs[0].id, ...snap.docs[0].data()};
-    }
-  }
-  const pagosMes = cuotasCache[key];
+  const pagosMes = await cargarPagosMes(key);
   let recaudado = 0, pendientes = 0;
   socios.filter(s=>s.activo).forEach(s=>{
     const pago = pagosMes[s.id];
@@ -1018,6 +1031,7 @@ async function renderCuotas(){
       : (esMesBloqueado ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;">
            <button class="btn btn-orange btn-sm" data-registrar="${s.id}">Registrar pago</button>
            <button class="btn btn-ghost btn-sm" data-transferencia="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="3" y1="22" x2="21" y2="22"></line><line x1="6" y1="18" x2="6" y2="11"></line><line x1="10" y1="18" x2="10" y2="11"></line><line x1="14" y1="18" x2="14" y2="11"></line><line x1="18" y1="18" x2="18" y2="11"></line><polygon points="12 2 21 8 3 8"></polygon></svg></span> Enviar datos</button>
+           <button class="btn btn-ghost btn-sm" data-recordatorio="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg></span> Recordatorio</button>
          </div>`);
     return `<tr>
       <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
@@ -1036,6 +1050,7 @@ async function renderCuotas(){
   document.querySelectorAll('[data-registrar]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.registrar)));
   document.querySelectorAll('[data-comprobante]').forEach(b=>b.addEventListener('click', ()=>enviarComprobante(b.dataset.comprobante)));
   document.querySelectorAll('[data-transferencia]').forEach(b=>b.addEventListener('click', ()=>enviarDatosTransferencia(b.dataset.transferencia)));
+  document.querySelectorAll('[data-recordatorio]').forEach(b=>b.addEventListener('click', ()=>enviarRecordatorioIndividual(b.dataset.recordatorio)));
 }
 
 function abrirModalPago(socioId){
@@ -1081,14 +1096,18 @@ function enviarDatosTransferencia(socioId){
   msg += 'Cualquier duda, escribinos por acá 🙌';
   window.open(waLink(s.telefono, msg), '_blank');
 }
+function enviarRecordatorioIndividual(socioId){
+  const s = socios.find(x=>x.id===socioId);
+  const msg = `Hola ${s.nombre}! Te recordamos que tenés pendiente el pago de tu cuota de *${gymConfig.nombre}* correspondiente a ${MESES[mesActual.getMonth()]}. ¡Te esperamos! 💪`;
+  window.open(waLink(s.telefono, msg), '_blank');
+}
 
 /* ---------------- RECORDATORIOS MASIVOS ---------------- */
 let recordQueue = [];
 let recordIndex = 0;
 async function abrirRecordatorios(){
   const key = mesKey(mesActual);
-  if(!cuotasCache[key]) await renderCuotas();
-  const pagosMes = cuotasCache[key];
+  const pagosMes = await cargarPagosMes(key);
   recordQueue = socios.filter(s=>s.activo && !pagosMes[s.id]);
   recordIndex = 0;
   if(recordQueue.length===0){ toast('No hay socios con cuota pendiente este mes'); return; }
@@ -1129,16 +1148,14 @@ async function renderLiquidaciones(){
   if(!profeObj) return;
   const alumnos = socios.filter(s=>s.profesorId===profeObj.id && s.activo);
   const key = mesKey(mesActualProf);
+  const pagosMes = await cargarPagosMes(key);
 
   let total = 0;
-  const filas = [];
-  for(const s of alumnos){
-    const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos').where('mesKey','==',key).limit(1).get();
-    let pago = null;
-    if(!snap.empty) pago = {id:snap.docs[0].id, ...snap.docs[0].data()};
+  const filas = alumnos.map(s=>{
+    const pago = pagosMes[s.id] || null;
     if(pago) total += Number(pago.monto)||0;
-    filas.push({socio:s, pago});
-  }
+    return {socio:s, pago};
+  });
 
   const pct = gymConfig.porcentajeLiquidacion ?? 70;
   const liquidacion = total * pct / 100;
@@ -1194,6 +1211,7 @@ async function aprobarInscripcion(id){
   const i = inscripcionesPendientes.find(x=>x.id===id);
   await db.collection('socios_addictive').add({
     nombre:i.nombre, apellido:i.apellido, dni:i.dni, telefono:i.telefono,
+    fechaNacimiento:i.fechaNacimiento||'',
     fotoURL:i.fotoURL||'', plan:i.plan, profesorId:i.profesorId, activo:true,
     uid: currentUid, fechaInscripcion: firebase.firestore.FieldValue.serverTimestamp()
   });
@@ -1259,10 +1277,11 @@ $('pubSubmitBtn')?.addEventListener('click', async ()=>{
   const apellido = $('pubApellido').value.trim();
   const dni = $('pubDni').value.trim();
   const telefono = $('pubTelefono').value.trim();
+  const fechaNacimiento = $('pubFechaNacimiento').value;
   const planSel = document.querySelector('.plan-option.sel');
   const profesorId = $('pubProfesor').value;
 
-  if(!nombre||!apellido||!dni||!telefono||!planSel||!profesorId){
+  if(!nombre||!apellido||!dni||!telefono||!fechaNacimiento||!planSel||!profesorId){
     $('inscFormError').innerHTML = '<div class="error-msg">Completá todos los campos y elegí un plan y un profe.</div>';
     return;
   }
@@ -1275,7 +1294,7 @@ $('pubSubmitBtn')?.addEventListener('click', async ()=>{
     const plan = window.__planesPublicos[planSel.dataset.planIdx];
     const profe = window.__profesoresPublicos.find(p=>p.id===profesorId);
     await db.collection('inscripciones_addictive').add({
-      nombre, apellido, dni, telefono, fotoURL,
+      nombre, apellido, dni, telefono, fechaNacimiento, fotoURL,
       plan: plan.nombre, profesorId, profesorNombre: profe?profe.nombre:'',
       estado:'pendiente', uid: GYM_UID_PUBLICO,
       fecha: new Date().toISOString().slice(0,10),
