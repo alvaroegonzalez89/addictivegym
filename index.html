@@ -142,6 +142,11 @@ main{padding:28px 32px;overflow-y:auto;height:100vh;}
 
 table{width:100%;border-collapse:collapse;}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding:10px 12px;border-bottom:1px solid var(--border);}
+.th-sort{cursor:pointer;user-select:none;transition:color .15s;white-space:nowrap;}
+.th-sort:hover{color:var(--text);}
+.th-sort.active{color:var(--teal-light);}
+.th-sort .sort-arrow{display:inline-block;margin-left:4px;opacity:.4;font-size:10px;}
+.th-sort.active .sort-arrow{opacity:1;}
 td{padding:12px;border-bottom:1px solid var(--border);font-size:14px;}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:rgba(255,255,255,.02);}
@@ -313,7 +318,15 @@ tr:hover td{background:rgba(255,255,255,.02);}
           </div>
         </div>
         <table>
-          <thead><tr><th></th><th>Nombre</th><th>Plan</th><th>Profe</th><th>Teléfono</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr>
+            <th></th>
+            <th class="th-sort" data-sort="nombre">Nombre</th>
+            <th class="th-sort" data-sort="plan">Plan</th>
+            <th class="th-sort" data-sort="profe">Profe</th>
+            <th class="th-sort" data-sort="telefono">Teléfono</th>
+            <th class="th-sort" data-sort="estado">Estado</th>
+            <th></th>
+          </tr></thead>
           <tbody id="sociosTableBody"></tbody>
         </table>
         <div class="empty-state hidden" id="sociosEmpty"><div style="display:flex;justify-content:center;margin-bottom:10px;color:var(--text-muted);"><span class="icon icon-lg"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span></div>Todavía no hay socios cargados.</div>
@@ -832,10 +845,52 @@ function renderProfeTabs(){
 }
 
 /* ---------------- SOCIOS ---------------- */
+let sociosSortField = 'nombre';
+let sociosSortDir = 'asc';
+
+function valorOrdenSocio(s, field){
+  switch(field){
+    case 'nombre': return (s.nombre+' '+s.apellido).toLowerCase();
+    case 'plan': return (s.plan||'').toLowerCase();
+    case 'profe': return profeNombre(s.profesorId).toLowerCase();
+    case 'telefono': return s.telefono||'';
+    case 'estado': return s.activo ? 0 : 1;
+    default: return '';
+  }
+}
+function ordenarSocios(lista){
+  const dir = sociosSortDir === 'asc' ? 1 : -1;
+  return [...lista].sort((a,b)=>{
+    const va = valorOrdenSocio(a, sociosSortField), vb = valorOrdenSocio(b, sociosSortField);
+    if(va < vb) return -1*dir;
+    if(va > vb) return 1*dir;
+    return 0;
+  });
+}
+document.querySelectorAll('.th-sort').forEach(th=>{
+  th.innerHTML = th.textContent + ' <span class="sort-arrow">▲</span>';
+  if(th.dataset.sort === sociosSortField) th.classList.add('active');
+  th.addEventListener('click', ()=>{
+    const field = th.dataset.sort;
+    if(sociosSortField === field){
+      sociosSortDir = sociosSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sociosSortField = field;
+      sociosSortDir = 'asc';
+    }
+    document.querySelectorAll('.th-sort').forEach(x=>{
+      x.classList.remove('active');
+      x.querySelector('.sort-arrow').textContent = '▲';
+    });
+    th.classList.add('active');
+    th.querySelector('.sort-arrow').textContent = sociosSortDir === 'asc' ? '▲' : '▼';
+    renderSocios($('searchSocios').value);
+  });
+});
+
 async function cargarSocios(){
   const snap = await db.collection('socios_addictive').where('uid','==',currentUid).get();
   socios = snap.docs.map(d=>({id:d.id, ...d.data()}));
-  socios.sort((a,b)=> (a.apellido+' '+a.nombre).localeCompare(b.apellido+' '+b.nombre, 'es', {sensitivity:'base'}));
   renderSocios();
   renderStats();
 }
@@ -843,10 +898,11 @@ function profeNombre(id){ const p = profesoresList.find(x=>x.id===id); return p?
 
 function renderSocios(filter){
   const term = (filter||'').toLowerCase();
-  const filtrados = socios.filter(s=>{
+  let filtrados = socios.filter(s=>{
     if(!term) return true;
     return (s.nombre+' '+s.apellido+' '+(s.dni||'')).toLowerCase().includes(term);
   });
+  filtrados = ordenarSocios(filtrados);
   if(filtrados.length===0){
     $('sociosTableBody').innerHTML='';
     $('sociosEmpty').classList.remove('hidden');
