@@ -714,6 +714,7 @@ async function bootAdminPanel(){
   await cargarSocios();
   escucharInscripcionesPendientes();
   renderStats();
+  actualizarStatsRecaudacionDashboard();
   renderConfigForm();
   renderProfeTabs();
   renderLiquidaciones();
@@ -1034,6 +1035,21 @@ $('btnEliminarSocio').addEventListener('click', async ()=>{
 function renderStats(){
   $('statSocios').textContent = socios.filter(s=>s.activo).length;
   $('statInscPend').textContent = inscripcionesPendientes.length;
+}
+
+// Recaudado/pendientes del mes en curso para las tarjetas del Dashboard.
+// Antes solo se calculaban al entrar a la pestaña Cuotas; ahora se traen
+// apenas arranca el panel, así el Dashboard muestra los datos reales de una.
+async function actualizarStatsRecaudacionDashboard(){
+  const key = mesKey(new Date());
+  const pagosMes = await cargarPagosMes(key);
+  let recaudado = 0, pendientes = 0;
+  socios.filter(s=>s.activo).forEach(s=>{
+    const pago = pagosMes[s.id];
+    if(pago) recaudado += Number(pago.monto)||0; else pendientes++;
+  });
+  $('statCuotasMes').textContent = fmtMoney(recaudado);
+  $('statPendientes').textContent = pendientes;
 }
 
 /* ============================================================
