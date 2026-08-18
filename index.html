@@ -615,7 +615,8 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-const PROFESORES = ["Hector","Cecilia","Carlos","Agustina","Luciano","Gabriel"];
+const ENTRENA_SOLO = "Entrena solo";
+const PROFESORES = ["Hector","Cecilia","Carlos","Agustina","Luciano","Gabriel", ENTRENA_SOLO];
 
 // UID del admin de Addictive Gym. Lo necesita el formulario público de
 // inscripción (?inscripcion=1), que no tiene login, para saber a qué
@@ -867,6 +868,18 @@ async function cargarProfesores(){
   } else {
     profesoresList = snap.docs.map(d=>({id:d.id, ...d.data()}));
   }
+  // Migración: si el gimnasio ya tenía profes cargados de antes, agregamos
+  // "Entrena solo" para los alumnos que no tienen profe asignado.
+  if(!profesoresList.some(p=>p.nombre === ENTRENA_SOLO)){
+    const ref = db.collection('profesores_addictive').doc();
+    await ref.set({nombre: ENTRENA_SOLO, uid: currentUid});
+    profesoresList.push({id: ref.id, nombre: ENTRENA_SOLO, uid: currentUid});
+  }
+  profesoresList.sort((a,b)=>{
+    if(a.nombre === ENTRENA_SOLO) return 1;
+    if(b.nombre === ENTRENA_SOLO) return -1;
+    return a.nombre.localeCompare(b.nombre, 'es', {sensitivity:'base'});
+  });
   $('socioProfesor').innerHTML = profesoresList.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
 }
 function renderProfeTabs(){
@@ -1350,13 +1363,17 @@ async function renderLiquidaciones(){
     return {socio:s, pago};
   });
 
-  const pct = gymConfig.porcentajeLiquidacion ?? 70;
-  const liquidacion = total * pct / 100;
-
   $('profAlumnos').textContent = alumnos.length;
   $('profTotal').textContent = fmtMoney(total);
-  $('profLiquidacion').textContent = fmtMoney(liquidacion);
-  $('profLiquidacionLbl').textContent = `Liquidación (${pct}%)`;
+  if(profeSeleccionado === ENTRENA_SOLO){
+    $('profLiquidacion').textContent = '—';
+    $('profLiquidacionLbl').textContent = 'No aplica (entrenan solos)';
+  } else {
+    const pct = gymConfig.porcentajeLiquidacion ?? 70;
+    const liquidacion = total * pct / 100;
+    $('profLiquidacion').textContent = fmtMoney(liquidacion);
+    $('profLiquidacionLbl').textContent = `Liquidación (${pct}%)`;
+  }
   $('profeTableBody').innerHTML = filas.map(f=>`
     <tr>
       <td>${f.socio.nombre} ${f.socio.apellido}</td>
@@ -1445,6 +1462,11 @@ async function initInscripcionPublica(){
 
     const profSnap = await db.collection('profesores_addictive').where('uid','==',GYM_UID_PUBLICO).get();
     window.__profesoresPublicos = profSnap.docs.map(d=>({id:d.id, ...d.data()}));
+    window.__profesoresPublicos.sort((a,b)=>{
+      if(a.nombre === ENTRENA_SOLO) return 1;
+      if(b.nombre === ENTRENA_SOLO) return -1;
+      return a.nombre.localeCompare(b.nombre, 'es', {sensitivity:'base'});
+    });
     $('pubProfesor').innerHTML = '<option value="">Seleccionar...</option>' +
       window.__profesoresPublicos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
   }catch(err){
