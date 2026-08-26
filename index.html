@@ -306,7 +306,15 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <section id="view-dashboard" class="view">
       <div class="stats-row">
         <div class="stat-card teal"><div class="num" id="statSocios">0</div><div class="lbl">Socios activos</div></div>
-        <div class="stat-card orange"><div class="num" id="statCuotasMes">$0</div><div class="lbl">Recaudado este mes</div></div>
+        <div class="stat-card orange">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div class="num" id="statCuotasMes">••••••</div>
+            <button id="btnToggleRecaudacion" title="Mostrar/ocultar" style="background:transparent;border:none;color:var(--text-muted);padding:4px;border-radius:6px;">
+              <span class="icon icon-md"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+            </button>
+          </div>
+          <div class="lbl">Recaudado este mes</div>
+        </div>
         <div class="stat-card teal"><div class="num" id="statPendientes">0</div><div class="lbl">Cuotas pendientes</div></div>
         <div class="stat-card orange"><div class="num" id="statInscPend">0</div><div class="lbl">Inscripciones pendientes</div></div>
       </div>
@@ -339,6 +347,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
             <th class="th-sort" data-sort="profe">Profe</th>
             <th class="th-sort" data-sort="telefono">Teléfono</th>
             <th class="th-sort" data-sort="nacimiento">Nacimiento</th>
+            <th class="th-sort" data-sort="inicio">Inicio</th>
             <th class="th-sort" data-sort="estado">Estado</th>
             <th></th>
           </tr></thead>
@@ -373,6 +382,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
             <th class="th-sort-cuotas" data-sort-cuotas="plan">Plan</th>
             <th class="th-sort-cuotas" data-sort-cuotas="estado">Estado</th>
             <th class="th-sort-cuotas" data-sort-cuotas="monto">Monto pagado</th>
+            <th class="th-sort-cuotas" data-sort-cuotas="medio">Medio</th>
             <th class="th-sort-cuotas" data-sort-cuotas="fecha">Fecha pago</th>
             <th></th>
           </tr></thead>
@@ -429,6 +439,13 @@ tr:hover td{background:rgba(255,255,255,.02);}
         </div>
         <div class="field"><label>Dirección</label><input type="text" id="cfgDireccion"></div>
         <button class="btn btn-primary" style="width:auto;" id="btnGuardarDatos">Guardar datos</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Seguridad</h2></div>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Este PIN es aparte de la contraseña de acceso al panel. Se usa para desbloquear el monto de "Recaudado este mes" en el Dashboard, así solo los dueños pueden verlo.</p>
+        <div class="field" style="max-width:220px;"><label>PIN para ver la recaudación</label><input type="password" id="cfgPinRecaudacion" inputmode="numeric" autocomplete="off"></div>
+        <button class="btn btn-primary" style="width:auto;" id="btnGuardarPin">Guardar PIN</button>
       </div>
 
       <div class="card">
@@ -546,6 +563,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
         <div class="field"><label>Teléfono</label><input type="tel" id="socioTelefono"></div>
       </div>
       <div class="field"><label>Fecha de nacimiento</label><input type="date" id="socioFechaNacimiento"></div>
+      <div class="field"><label>Fecha de inicio (para controlar cuándo cumple el mes)</label><input type="date" id="socioFechaInicio"></div>
       <div class="grid-2">
         <div class="field"><label>Plan</label><select id="socioPlan"></select></div>
         <div class="field"><label>Profesor</label><select id="socioProfesor"></select></div>
@@ -566,12 +584,22 @@ tr:hover td{background:rgba(255,255,255,.02);}
 <!-- ============ MODAL REGISTRAR PAGO ============ -->
 <div class="modal-overlay" id="modalPago">
   <div class="modal">
-    <div class="modal-head"><h3>Registrar pago</h3><button class="modal-close" data-close-modal="modalPago"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span></button></div>
+    <div class="modal-head"><h3 id="modalPagoTitulo">Registrar pago</h3><button class="modal-close" data-close-modal="modalPago"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span></button></div>
     <div class="modal-body">
       <input type="hidden" id="pagoSocioId">
-      <p id="pagoSocioNombre" style="font-weight:600;margin-bottom:14px;"></p>
-      <div class="field"><label>Monto</label><input type="number" id="pagoMonto"></div>
+      <input type="hidden" id="pagoId">
+      <p id="pagoSocioNombre" style="font-weight:600;margin-bottom:4px;"></p>
+      <p id="pagoPlanPrecio" style="color:var(--text-muted);font-size:13px;margin-bottom:14px;"></p>
+      <div class="field"><label>Monto pagado</label><input type="number" id="pagoMonto"></div>
+      <p id="pagoSaldoAviso" style="color:var(--orange);font-size:13px;margin:-8px 0 14px 0;"></p>
       <div class="field"><label>Fecha de pago</label><input type="date" id="pagoFecha"></div>
+      <div class="field">
+        <label>Medio de pago</label>
+        <select id="pagoMedio">
+          <option value="Efectivo">Efectivo</option>
+          <option value="Transferencia">Transferencia</option>
+        </select>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close-modal="modalPago">Cancelar</button>
@@ -592,6 +620,22 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <div class="modal-foot">
       <button class="btn btn-ghost" data-close-modal="modalRecordatorios">Cerrar</button>
       <button class="btn btn-orange" id="btnRecordSiguiente">Enviar y siguiente ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL PIN RECAUDACIÓN ============ -->
+<div class="modal-overlay" id="modalPinRecaudacion">
+  <div class="modal">
+    <div class="modal-head"><h3>Ingresar PIN</h3><button class="modal-close" data-close-modal="modalPinRecaudacion"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></span></button></div>
+    <div class="modal-body">
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">Este monto solo lo puede ver quien tenga el PIN configurado en Configuración.</p>
+      <div id="pinRecaudacionError"></div>
+      <div class="field"><label>PIN</label><input type="password" id="pinRecaudacionInput" inputmode="numeric" autocomplete="off"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close-modal="modalPinRecaudacion">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto;" id="btnConfirmarPinRecaudacion">Ver monto</button>
     </div>
   </div>
 </div>
@@ -723,6 +767,10 @@ document.querySelectorAll('.nav-item[data-view]').forEach(btn=>{
     $('view-'+btn.dataset.view).classList.remove('hidden');
     $('viewTitle').textContent = btn.textContent.trim().replace(/^\S+\s/,'');
     $('sidebar').classList.remove('open'); $('sidebarOverlay').classList.remove('show');
+    if(btn.dataset.view!=='dashboard' && !recaudacionOculta){
+      recaudacionOculta = true;
+      mostrarRecaudacionSegunEstado();
+    }
     if(btn.dataset.view==='cuotas') renderCuotas();
     if(btn.dataset.view==='profesores') renderLiquidaciones();
   });
@@ -787,6 +835,7 @@ function renderConfigForm(){
   $('cfgInstagram').value = gymConfig.instagram||'';
   $('cfgDireccion').value = gymConfig.direccion||'';
   $('cfgPorcLiquidacion').value = gymConfig.porcentajeLiquidacion ?? 70;
+  $('cfgPinRecaudacion').value = gymConfig.pinRecaudacion || '';
   renderCuentasBancariasForm();
   renderPlanesForm();
 }
@@ -803,6 +852,12 @@ $('btnGuardarPorcLiquidacion').addEventListener('click', async ()=>{
   await db.collection('config_addictive').doc(currentUid).set({porcentajeLiquidacion: pct}, {merge:true});
   toast('Porcentaje de liquidación guardado');
   renderLiquidaciones();
+});
+$('btnGuardarPin').addEventListener('click', async ()=>{
+  const pin = $('cfgPinRecaudacion').value.trim();
+  gymConfig.pinRecaudacion = pin;
+  await db.collection('config_addictive').doc(currentUid).set({pinRecaudacion: pin}, {merge:true});
+  toast(pin ? 'PIN guardado' : 'PIN eliminado');
 });
 
 function renderCuentasBancariasForm(){
@@ -907,6 +962,7 @@ function valorOrdenSocio(s, field){
     case 'profe': return profeNombre(s.profesorId).toLowerCase();
     case 'telefono': return s.telefono||'';
     case 'nacimiento': return s.fechaNacimiento ? s.fechaNacimiento.slice(5) : '99-99';
+    case 'inicio': return s.fechaInicio || '9999-99-99';
     case 'estado': return s.activo ? 0 : 1;
     default: return '';
   }
@@ -970,6 +1026,7 @@ function renderSocios(filter){
       <td>${profeNombre(s.profesorId)}</td>
       <td>${s.telefono||'—'}</td>
       <td>${fmtFechaNac(s.fechaNacimiento)}</td>
+      <td>${s.fechaInicio ? fmtFechaNac(s.fechaInicio) : '—'}</td>
       <td><span class="pill ${s.activo?'ok':'off'}">${s.activo?'Activo':'Inactivo'}</span></td>
       <td style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" data-edit-socio="${s.id}">Editar</button>
@@ -1018,6 +1075,7 @@ function abrirModalSocio(id){
   $('socioDni').value = s?.dni||'';
   $('socioTelefono').value = s?.telefono||'';
   $('socioFechaNacimiento').value = s?.fechaNacimiento||'';
+  $('socioFechaInicio').value = s?.fechaInicio || (s ? '' : new Date().toISOString().slice(0,10));
   $('socioPlan').value = s?.plan||(planes[0]?.nombre||'');
   $('socioProfesor').value = s?.profesorId||(profesoresList[0]?.id||'');
   $('socioActivo').value = s ? String(s.activo) : 'true';
@@ -1073,6 +1131,7 @@ $('btnGuardarSocio').addEventListener('click', async ()=>{
       dni: $('socioDni').value.trim(),
       telefono: $('socioTelefono').value.trim(),
       fechaNacimiento: $('socioFechaNacimiento').value,
+      fechaInicio: $('socioFechaInicio').value,
       plan: $('socioPlan').value,
       profesorId: $('socioProfesor').value,
       activo: $('socioActivo').value === 'true',
@@ -1110,6 +1169,44 @@ function renderStats(){
   $('statInscPend').textContent = inscripcionesPendientes.length;
 }
 
+// El monto de recaudación se muestra tapado por defecto y solo se
+// destapa ingresando el PIN configurado en Configuración > Seguridad.
+let recaudacionOculta = true;
+let recaudadoMesReal = 0;
+
+function mostrarRecaudacionSegunEstado(){
+  $('statCuotasMes').textContent = recaudacionOculta ? '••••••' : fmtMoney(recaudadoMesReal);
+}
+
+$('btnToggleRecaudacion').addEventListener('click', ()=>{
+  if(!recaudacionOculta){
+    recaudacionOculta = true;
+    mostrarRecaudacionSegunEstado();
+    return;
+  }
+  $('pinRecaudacionInput').value = '';
+  $('pinRecaudacionError').innerHTML = '';
+  openModal('modalPinRecaudacion');
+  setTimeout(()=>$('pinRecaudacionInput').focus(), 100);
+});
+$('btnConfirmarPinRecaudacion').addEventListener('click', ()=>{
+  const ingresado = $('pinRecaudacionInput').value.trim();
+  if(!gymConfig.pinRecaudacion){
+    $('pinRecaudacionError').innerHTML = '<div class="error-msg">Todavía no configuraste un PIN. Andá a Configuración → Seguridad para crear uno.</div>';
+    return;
+  }
+  if(ingresado === String(gymConfig.pinRecaudacion)){
+    recaudacionOculta = false;
+    mostrarRecaudacionSegunEstado();
+    closeModal('modalPinRecaudacion');
+  } else {
+    $('pinRecaudacionError').innerHTML = '<div class="error-msg">PIN incorrecto.</div>';
+  }
+});
+$('pinRecaudacionInput').addEventListener('keydown', e=>{
+  if(e.key === 'Enter') $('btnConfirmarPinRecaudacion').click();
+});
+
 // Recaudado/pendientes del mes en curso para las tarjetas del Dashboard.
 // Antes solo se calculaban al entrar a la pestaña Cuotas; ahora se traen
 // apenas arranca el panel, así el Dashboard muestra los datos reales de una.
@@ -1121,7 +1218,8 @@ async function actualizarStatsRecaudacionDashboard(){
     const pago = pagosMes[s.id];
     if(pago) recaudado += Number(pago.monto)||0; else pendientes++;
   });
-  $('statCuotasMes').textContent = fmtMoney(recaudado);
+  recaudadoMesReal = recaudado;
+  mostrarRecaudacionSegunEstado();
   $('statPendientes').textContent = pendientes;
 }
 
@@ -1162,6 +1260,7 @@ function valorOrdenCuota(s, pagosMes, field){
     case 'plan': return (s.plan||'').toLowerCase();
     case 'estado': return pago ? 0 : 1;
     case 'monto': return pago ? Number(pago.monto)||0 : -1;
+    case 'medio': return pago ? (pago.medioPago||'') : '';
     case 'fecha': return pago ? pago.fecha : '';
     default: return '';
   }
@@ -1221,47 +1320,100 @@ async function renderCuotas(){
 
   $('cuotasTableBody').innerHTML = sociosAMostrar.map(s=>{
     const pago = pagosMes[s.id];
-    const estado = pago
-      ? '<span class="pill ok">Pagado</span>'
-      : (esMesBloqueado ? '<span class="pill locked"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span> Mes cerrado</span>' : '<span class="pill pend">Pendiente</span>');
-    const accion = pago
-      ? `<button class="btn btn-ghost btn-sm" data-comprobante="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></span> Comprobante</button>`
-      : (esMesBloqueado ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+    const plan = planes.find(p=>p.nombre===s.plan);
+    const precioPlan = plan ? Number(plan.precio)||0 : 0;
+    const esParcial = pago && precioPlan && Number(pago.monto) < precioPlan;
+    const saldo = esParcial ? precioPlan - Number(pago.monto) : 0;
+
+    let estado;
+    if(!pago){
+      estado = esMesBloqueado
+        ? '<span class="pill locked"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span> Mes cerrado</span>'
+        : '<span class="pill pend">Pendiente</span>';
+    } else if(esParcial){
+      estado = `<span class="pill pend">Pendiente ${fmtMoney(saldo)}</span>`;
+    } else {
+      estado = '<span class="pill ok">Pagado</span>';
+    }
+
+    const btnEditarMonto = `<button class="btn btn-ghost btn-sm" data-editar-monto="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg></span> Editar monto</button>`;
+
+    let accion;
+    if(pago && !esParcial){
+      accion = `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" data-comprobante="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></span> Comprobante</button>
+        ${btnEditarMonto}
+      </div>`;
+    } else if(pago && esParcial){
+      accion = `<div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" data-comprobante="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></span> Comprobante</button>
+        ${btnEditarMonto}
+        <button class="btn btn-ghost btn-sm" data-recordatorio="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg></span> Recordatorio</button>
+      </div>`;
+    } else if(esMesBloqueado){
+      accion = '';
+    } else {
+      accion = `<div style="display:flex;gap:6px;flex-wrap:wrap;">
            <button class="btn btn-orange btn-sm" data-registrar="${s.id}">Registrar pago</button>
            <button class="btn btn-ghost btn-sm" data-transferencia="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><line x1="3" y1="22" x2="21" y2="22"></line><line x1="6" y1="18" x2="6" y2="11"></line><line x1="10" y1="18" x2="10" y2="11"></line><line x1="14" y1="18" x2="14" y2="11"></line><line x1="18" y1="18" x2="18" y2="11"></line><polygon points="12 2 21 8 3 8"></polygon></svg></span> Enviar datos</button>
            <button class="btn btn-ghost btn-sm" data-recordatorio="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"></path><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path></svg></span> Recordatorio</button>
-         </div>`);
+         </div>`;
+    }
+
     return `<tr>
       <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
       <td>${s.nombre} ${s.apellido}</td>
       <td>${s.plan||'—'}</td>
       <td>${estado}</td>
       <td>${pago?fmtMoney(pago.monto):'—'}</td>
+      <td>${pago?.medioPago||'—'}</td>
       <td>${pago?.fecha||'—'}</td>
       <td>${accion}</td>
     </tr>`;
   }).join('');
 
-  $('statCuotasMes').textContent = fmtMoney(recaudado);
   $('statPendientes').textContent = pendientes;
 
   document.querySelectorAll('[data-registrar]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.registrar)));
+  document.querySelectorAll('[data-editar-monto]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.editarMonto)));
   document.querySelectorAll('[data-comprobante]').forEach(b=>b.addEventListener('click', ()=>enviarComprobante(b.dataset.comprobante)));
   document.querySelectorAll('[data-transferencia]').forEach(b=>b.addEventListener('click', ()=>enviarDatosTransferencia(b.dataset.transferencia)));
   document.querySelectorAll('[data-recordatorio]').forEach(b=>b.addEventListener('click', ()=>enviarRecordatorioIndividual(b.dataset.recordatorio)));
 }
 
+function actualizarSaldoAviso(){
+  const socioId = $('pagoSocioId').value;
+  const s = socios.find(x=>x.id===socioId);
+  const plan = s ? planes.find(p=>p.nombre===s.plan) : null;
+  const monto = Number($('pagoMonto').value)||0;
+  if(plan && monto > 0 && monto < Number(plan.precio)){
+    $('pagoSaldoAviso').textContent = `Va a quedar como pago parcial: falta ${fmtMoney(Number(plan.precio) - monto)} de este plan.`;
+  } else {
+    $('pagoSaldoAviso').textContent = '';
+  }
+}
+$('pagoMonto').addEventListener('input', actualizarSaldoAviso);
+
 function abrirModalPago(socioId){
   const s = socios.find(x=>x.id===socioId);
-  $('pagoSocioId').value = socioId;
-  $('pagoSocioNombre').textContent = s.nombre+' '+s.apellido;
   const plan = planes.find(p=>p.nombre===s.plan);
-  $('pagoMonto').value = plan?plan.precio:'';
-  $('pagoFecha').value = new Date().toISOString().slice(0,10);
+  const key = mesKey(mesActual);
+  const pagoExistente = cuotasCache[key] ? cuotasCache[key][socioId] : null;
+
+  $('pagoSocioId').value = socioId;
+  $('pagoId').value = pagoExistente ? pagoExistente.id : '';
+  $('pagoSocioNombre').textContent = s.nombre+' '+s.apellido;
+  $('pagoPlanPrecio').textContent = plan ? `Plan ${plan.nombre}: ${fmtMoney(plan.precio)}` : '';
+  $('modalPagoTitulo').textContent = pagoExistente ? 'Editar monto del pago' : 'Registrar pago';
+  $('pagoMonto').value = pagoExistente ? pagoExistente.monto : (plan?plan.precio:'');
+  $('pagoFecha').value = pagoExistente ? pagoExistente.fecha : new Date().toISOString().slice(0,10);
+  $('pagoMedio').value = pagoExistente ? (pagoExistente.medioPago || 'Efectivo') : 'Efectivo';
+  actualizarSaldoAviso();
   openModal('modalPago');
 }
 $('btnConfirmarPago').addEventListener('click', async ()=>{
   const socioId = $('pagoSocioId').value;
+  const pagoId = $('pagoId').value;
   const key = mesKey(mesActual);
   const fecha = $('pagoFecha').value;
   const diaPago = Number(fecha.split('-')[2]);
@@ -1270,14 +1422,20 @@ $('btnConfirmarPago').addEventListener('click', async ()=>{
     fecha,
     dia: diaPago,
     mesKey: key,
-    uid: currentUid,
-    creado: firebase.firestore.FieldValue.serverTimestamp()
+    medioPago: $('pagoMedio').value,
+    uid: currentUid
   };
-  await db.collection('socios_addictive').doc(socioId).collection('pagos').add(data);
+  if(pagoId){
+    await db.collection('socios_addictive').doc(socioId).collection('pagos').doc(pagoId).update(data);
+  } else {
+    data.creado = firebase.firestore.FieldValue.serverTimestamp();
+    await db.collection('socios_addictive').doc(socioId).collection('pagos').add(data);
+  }
   delete cuotasCache[key]; // invalidar cache de ese mes
   closeModal('modalPago');
   await renderCuotas();
-  toast('Pago registrado');
+  actualizarStatsRecaudacionDashboard();
+  toast(pagoId ? 'Monto actualizado' : 'Pago registrado');
 });
 
 function enviarComprobante(socioId){
@@ -1421,7 +1579,7 @@ async function aprobarInscripcion(id){
   const i = inscripcionesPendientes.find(x=>x.id===id);
   await db.collection('socios_addictive').add({
     nombre:i.nombre, apellido:i.apellido, dni:i.dni, telefono:i.telefono,
-    fechaNacimiento:i.fechaNacimiento||'',
+    fechaNacimiento:i.fechaNacimiento||'', fechaInicio: new Date().toISOString().slice(0,10),
     fotoURL:i.fotoURL||'', plan:i.plan, profesorId:i.profesorId, activo:true,
     uid: currentUid, fechaInscripcion: firebase.firestore.FieldValue.serverTimestamp()
   });
