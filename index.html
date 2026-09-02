@@ -1340,8 +1340,12 @@ document.querySelectorAll('.th-sort-cuotas').forEach(th=>{
 async function renderCuotas(){
   $('mesLabel').textContent = MESES[mesActual.getMonth()] + ' ' + mesActual.getFullYear();
   const hoy = new Date();
-  const esMesActualOAnterior = mesKey(mesActual) <= mesKey(hoy);
-  const esMesBloqueado = mesKey(mesActual) < mesKey(new Date(hoy.getFullYear(), hoy.getMonth(),1));
+  // Antes los meses anteriores quedaban bloqueados para registrar pagos.
+  // Se desbloqueó a pedido del gimnasio: varios socios pagan fuera de
+  // fecha (ej. la cuota de agosto se paga en septiembre) y quieren que
+  // ese pago quede cargado en el mes que corresponde, no en el que se
+  // pagó. Solo se sigue restringiendo avanzar a meses futuros.
+  const esMesBloqueado = false;
   $('mesNext').disabled = mesKey(mesActual) >= mesKey(new Date(hoy.getFullYear(), hoy.getMonth(),1));
 
   const key = mesKey(mesActual);
@@ -1470,7 +1474,7 @@ function abrirModalPago(socioId){
 }
 $('btnConfirmarPago').addEventListener('click', async ()=>{
   const socioId = $('pagoSocioId').value;
-  const pagoId = $('pagoId').value;
+  let pagoId = $('pagoId').value;
   const key = mesKey(mesActual);
   const fecha = $('pagoFecha').value;
   const diaPago = Number(fecha.split('-')[2]);
@@ -1483,17 +1487,35 @@ $('btnConfirmarPago').addEventListener('click', async ()=>{
     libre: false,
     uid: currentUid
   };
-  if(pagoId){
-    await db.collection('socios_addictive').doc(socioId).collection('pagos').doc(pagoId).update(data);
-  } else {
-    data.creado = firebase.firestore.FieldValue.serverTimestamp();
-    await db.collection('socios_addictive').doc(socioId).collection('pagos').add(data);
+  const btn = $('btnConfirmarPago');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  try{
+    if(!pagoId){
+      // Chequeo defensivo: si por algún motivo ya existe un pago para este
+      // socio en este mes (aunque la caché no lo tuviera), lo actualizamos
+      // en vez de crear uno nuevo, para no terminar con pagos duplicados.
+      const snapExistente = await db.collection('socios_addictive').doc(socioId).collection('pagos')
+        .where('mesKey','==',key).limit(1).get();
+      if(!snapExistente.empty) pagoId = snapExistente.docs[0].id;
+    }
+    if(pagoId){
+      await db.collection('socios_addictive').doc(socioId).collection('pagos').doc(pagoId).update(data);
+    } else {
+      data.creado = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection('socios_addictive').doc(socioId).collection('pagos').add(data);
+    }
+    delete cuotasCache[key]; // invalidar cache de ese mes
+    closeModal('modalPago');
+    await renderCuotas();
+    actualizarStatsRecaudacionDashboard();
+    toast(pagoId ? 'Monto actualizado' : 'Pago registrado');
+  }catch(err){
+    console.error(err);
+    toast('No se pudo guardar el pago: ' + err.message, true);
   }
-  delete cuotasCache[key]; // invalidar cache de ese mes
-  closeModal('modalPago');
-  await renderCuotas();
-  actualizarStatsRecaudacionDashboard();
-  toast(pagoId ? 'Monto actualizado' : 'Pago registrado');
+  btn.disabled = false;
+  btn.textContent = 'Confirmar pago';
 });
 
 async function marcarLibre(socioId){
@@ -1601,7 +1623,16 @@ async function renderLiquidaciones(){
   let total = 0;
   const filas = alumnos.map(s=>{
     const pago = pagosMes[s.id] || null;
-    if(pago && !pago.libre) total += Number(pago.monto)||0;
+    if(pago){
+      if(pago.libre){
+        // Libre no le cobra al socio, pero el profe igual lo atendió,
+        // así que para la liquidación cuenta el precio completo del plan.
+        const plan = planes.find(p=>p.nombre===s.plan);
+        total += plan ? Number(plan.precio)||0 : 0;
+      } else {
+        total += Number(pago.monto)||0;
+      }
+    }
     return {socio:s, pago};
   });
 
@@ -1617,15 +1648,23 @@ async function renderLiquidaciones(){
   }
   mostrarLiquidacionSegunEstado();
   $('profeTableBody').innerHTML = filas.map(f=>{
-    let pill;
-    if(!f.pago) pill = '<span class="pill pend">Pendiente</span>';
-    else if(f.pago.libre) pill = '<span class="pill libre">Libre</span>';
-    else pill = '<span class="pill ok">Pagado</span>';
+    let pill, monto;
+    if(!f.pago){
+      pill = '<span class="pill pend">Pendiente</span>';
+      monto = '—';
+    } else if(f.pago.libre){
+      pill = '<span class="pill libre">Libre</span>';
+      const plan = planes.find(p=>p.nombre===f.socio.plan);
+      monto = plan ? fmtMoney(plan.precio) + ' (libre)' : '—';
+    } else {
+      pill = '<span class="pill ok">Pagado</span>';
+      monto = fmtMoney(f.pago.monto);
+    }
     return `<tr>
       <td>${f.socio.nombre} ${f.socio.apellido}</td>
       <td>${f.socio.plan||'—'}</td>
       <td>${pill}</td>
-      <td>${f.pago && !f.pago.libre ? fmtMoney(f.pago.monto) : '—'}</td>
+      <td>${monto}</td>
     </tr>`;
   }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Este profe todavía no tiene alumnos asignados.</td></tr>';
 }
