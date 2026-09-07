@@ -1621,14 +1621,19 @@ async function renderLiquidaciones(){
   const pagosMes = await cargarPagosMes(key);
 
   let total = 0;
+  const excluirLibreDeLiquidacion = PROFES_CON_PIN.includes(profeSeleccionado);
   const filas = alumnos.map(s=>{
     const pago = pagosMes[s.id] || null;
     if(pago){
       if(pago.libre){
-        // Libre no le cobra al socio, pero el profe igual lo atendió,
-        // así que para la liquidación cuenta el precio completo del plan.
-        const plan = planes.find(p=>p.nombre===s.plan);
-        total += plan ? Number(plan.precio)||0 : 0;
+        // Libre no le cobra al socio. Para la mayoría de los profes,
+        // igual cuenta el precio del plan en la liquidación (porque el
+        // profe atendió al alumno igual). Excepción: para Hector y
+        // Cecilia, Libre NO suma nada a su liquidación.
+        if(!excluirLibreDeLiquidacion){
+          const plan = planes.find(p=>p.nombre===s.plan);
+          total += plan ? Number(plan.precio)||0 : 0;
+        }
       } else {
         total += Number(pago.monto)||0;
       }
@@ -1654,8 +1659,12 @@ async function renderLiquidaciones(){
       monto = '—';
     } else if(f.pago.libre){
       pill = '<span class="pill libre">Libre</span>';
-      const plan = planes.find(p=>p.nombre===f.socio.plan);
-      monto = plan ? fmtMoney(plan.precio) + ' (libre)' : '—';
+      if(excluirLibreDeLiquidacion){
+        monto = '— (no cuenta)';
+      } else {
+        const plan = planes.find(p=>p.nombre===f.socio.plan);
+        monto = plan ? fmtMoney(plan.precio) + ' (libre)' : '—';
+      }
     } else {
       pill = '<span class="pill ok">Pagado</span>';
       monto = fmtMoney(f.pago.monto);
