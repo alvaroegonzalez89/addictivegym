@@ -157,6 +157,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
 .pill.off{background:rgba(229,84,79,.15);color:var(--danger);}
 .pill.locked{background:rgba(143,160,164,.15);color:var(--text-muted);}
 .pill.libre{background:rgba(63,193,196,.15);color:var(--teal-light);}
+.pill.medio{background:rgba(250,223,184,.15);color:var(--peach);margin-left:6px;}
 
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
 .search-box{position:relative;}
@@ -376,6 +377,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
           <input type="checkbox" id="soloPagosHasta10" style="width:16px;height:16px;">
           Pagos hasta el 10 (mostrar solo los socios que pagaron hasta el día 10 de este mes)
         </label>
+        <p id="cuotasResumen" style="font-size:13px;color:var(--teal-light);margin-bottom:14px;"></p>
         <table>
           <thead><tr>
             <th></th>
@@ -405,7 +407,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
         </div>
         <div class="tabs" id="profeTabs"></div>
         <div class="stats-row" style="margin-bottom:18px;">
-          <div class="stat-card teal"><div class="num" id="profAlumnos">0</div><div class="lbl">Alumnos asignados</div></div>
+          <div class="stat-card teal"><div class="num" id="profAlumnos">0</div><div class="lbl" id="profAlumnosLbl">Alumnos asignados</div></div>
           <div class="stat-card orange">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
               <div class="num" id="profTotal">••••••</div>
@@ -581,6 +583,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
         <label>Estado</label>
         <select id="socioActivo"><option value="true">Activo</option><option value="false">Inactivo</option></select>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;">
+        <input type="checkbox" id="socioMedioMes" style="width:16px;height:16px;">
+        Medio mes (va solo medio mes y paga la mitad del plan)
+      </label>
     </div>
     <div class="modal-foot">
       <button class="btn btn-danger hidden" id="btnEliminarSocio">Eliminar</button>
@@ -602,6 +608,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
       <div class="field"><label>Monto pagado</label><input type="number" id="pagoMonto"></div>
       <p id="pagoSaldoAviso" style="color:var(--orange);font-size:13px;margin:-8px 0 14px 0;"></p>
       <div class="field"><label>Fecha de pago</label><input type="date" id="pagoFecha"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:14px;">
+        <input type="checkbox" id="pagoMedioMes" style="width:16px;height:16px;">
+        Medio mes (paga la mitad del plan)
+      </label>
       <div class="field">
         <label>Medio de pago</label>
         <select id="pagoMedio">
@@ -1033,7 +1043,7 @@ function renderSocios(filter){
   $('sociosTableBody').innerHTML = filtrados.map(s=>`
     <tr>
       <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
-      <td>${s.nombre} ${s.apellido}</td>
+      <td>${s.nombre} ${s.apellido}${s.medioMes ? '<span class="pill medio">½ mes</span>' : ''}</td>
       <td>${s.plan||'—'}</td>
       <td>${profeNombre(s.profesorId)}</td>
       <td>${s.telefono||'—'}</td>
@@ -1088,6 +1098,7 @@ function abrirModalSocio(id){
   $('socioTelefono').value = s?.telefono||'';
   $('socioFechaNacimiento').value = s?.fechaNacimiento||'';
   $('socioFechaInicio').value = s?.fechaInicio || (s ? '' : new Date().toISOString().slice(0,10));
+  $('socioMedioMes').checked = !!s?.medioMes;
   $('socioPlan').value = s?.plan||(planes[0]?.nombre||'');
   $('socioProfesor').value = s?.profesorId||(profesoresList[0]?.id||'');
   $('socioActivo').value = s ? String(s.activo) : 'true';
@@ -1144,6 +1155,7 @@ $('btnGuardarSocio').addEventListener('click', async ()=>{
       telefono: $('socioTelefono').value.trim(),
       fechaNacimiento: $('socioFechaNacimiento').value,
       fechaInicio: $('socioFechaInicio').value,
+      medioMes: $('socioMedioMes').checked,
       plan: $('socioPlan').value,
       profesorId: $('socioProfesor').value,
       activo: $('socioActivo').value === 'true',
@@ -1256,9 +1268,10 @@ async function actualizarStatsRecaudacionDashboard(){
   const key = mesKey(new Date());
   const pagosMes = await cargarPagosMes(key);
   let recaudado = 0, pendientes = 0;
-  socios.filter(s=>s.activo).forEach(s=>{
+  socios.filter(s=>socioCuentaEnMes(s, key, pagosMes)).forEach(s=>{
     const pago = pagosMes[s.id];
-    if(pago) recaudado += Number(pago.monto)||0; else pendientes++;
+    if(!pago) pendientes++;
+    else if(!pago.libre) recaudado += Number(pago.monto)||0;
   });
   recaudadoMesReal = recaudado;
   mostrarRecaudacionSegunEstado();
@@ -1276,20 +1289,59 @@ $('mesNext').addEventListener('click', ()=>{
 });
 $('soloPagosHasta10').addEventListener('change', renderCuotas);
 
-// Trae los pagos del mes de TODOS los socios en paralelo y los cachea.
-// La usan tanto Cuotas como Liquidaciones, así evitamos repetir consultas
-// a Firestore cada vez que se cambia de mes o de profesor.
+// Trae los pagos del mes de TODOS los socios en UNA sola consulta (collection
+// group query sobre todas las subcolecciones "pagos"), filtrada por uid y
+// mesKey, y los cachea. Antes esto hacía una consulta POR SOCIO (300+ idas
+// y vueltas a Firestore en paralelo); ahora es una sola consulta, mucho más
+// rápida. La usan tanto Cuotas como Liquidaciones.
 async function cargarPagosMes(key){
   if(cuotasCache[key]) return cuotasCache[key];
-  const resultados = await Promise.all(socios.map(async s=>{
-    const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos')
-      .where('mesKey','==',key).limit(1).get();
-    return snap.empty ? null : [s.id, {id:snap.docs[0].id, ...snap.docs[0].data()}];
-  }));
+  const snap = await db.collectionGroup('pagos')
+    .where('uid','==',currentUid)
+    .where('mesKey','==',key)
+    .get();
   const mapa = {};
-  resultados.forEach(r=>{ if(r) mapa[r[0]] = r[1]; });
+  snap.forEach(doc=>{
+    const socioId = doc.ref.parent.parent.id;
+    // Si por algún motivo quedó más de un pago para el mismo socio en el
+    // mismo mes (datos viejos), nos quedamos con el de monto más alto.
+    const existente = mapa[socioId];
+    if(!existente || Number(doc.data().monto||0) >= Number(existente.monto||0)){
+      mapa[socioId] = {id: doc.id, ...doc.data()};
+    }
+  });
   cuotasCache[key] = mapa;
   return mapa;
+}
+
+// Precio que se espera cobrar a un socio. Si es de "medio mes", la mitad
+// del plan. Si ya hay un pago, manda lo que se marcó AL COBRAR (así, si
+// después cambia la ficha, los meses anteriores no se reclasifican).
+function precioEsperado(s, pago){
+  const plan = planes.find(p=>p.nombre===s.plan);
+  const base = plan ? Number(plan.precio)||0 : 0;
+  const medio = pago ? !!pago.medioMes : !!s.medioMes;
+  return medio ? Math.round(base/2) : base;
+}
+
+// Mes (YYYY-MM) en el que arrancó el socio. Usa la "Fecha de inicio" si está
+// cargada; si no, la fecha en que se lo dio de alta en el sistema.
+function mesInicioSocio(s){
+  if(s.fechaInicio) return s.fechaInicio.slice(0,7);
+  if(s.fechaInscripcion && typeof s.fechaInscripcion.toDate === 'function'){
+    return mesKey(s.fechaInscripcion.toDate());
+  }
+  return null; // sin datos: se asume que ya estaba
+}
+
+// ¿Este socio cuenta en el mes "key"? Solo si está activo y ya había
+// arrancado. Si tiene un pago (o Libre) cargado ese mes, siempre cuenta,
+// por si se cargó la fecha de inicio después.
+function socioCuentaEnMes(s, key, pagosMes){
+  if(!s.activo) return false;
+  if(pagosMes && pagosMes[s.id]) return true;
+  const ini = mesInicioSocio(s);
+  return !ini || ini <= key;
 }
 
 let cuotasSortField = 'socio';
@@ -1350,15 +1402,23 @@ async function renderCuotas(){
 
   const key = mesKey(mesActual);
   const pagosMes = await cargarPagosMes(key);
-  let recaudado = 0, pendientes = 0;
-  socios.filter(s=>s.activo).forEach(s=>{
+  // Solo socios activos que ya habían arrancado en este mes.
+  const sociosDelMes = socios.filter(s=>socioCuentaEnMes(s, key, pagosMes));
+
+  // Resumen con los totales reales, para que se pueda verificar de un vistazo.
+  const resumen = {pagados:0, parciales:0, pendientes:0, libres:0};
+  sociosDelMes.forEach(s=>{
     const pago = pagosMes[s.id];
-    if(pago && !pago.libre) recaudado += Number(pago.monto)||0;
-    else if(!pago) pendientes++;
+    if(!pago){ resumen.pendientes++; return; }
+    if(pago.libre){ resumen.libres++; return; }
+    const precio = precioEsperado(s, pago);
+    if(precio && Number(pago.monto) < precio) resumen.parciales++; else resumen.pagados++;
   });
+  $('cuotasResumen').textContent =
+    `Total: ${sociosDelMes.length}  ·  Pagados: ${resumen.pagados}  ·  Pagos parciales: ${resumen.parciales}  ·  Pendientes: ${resumen.pendientes}  ·  Libres: ${resumen.libres}`;
 
   const soloHasta10 = $('soloPagosHasta10').checked;
-  let sociosAMostrar = socios.filter(s=>s.activo).filter(s=>{
+  let sociosAMostrar = sociosDelMes.filter(s=>{
     if(!soloHasta10) return true;
     const pago = pagosMes[s.id];
     return pago && pago.dia && pago.dia <= 10;
@@ -1367,8 +1427,7 @@ async function renderCuotas(){
 
   $('cuotasTableBody').innerHTML = sociosAMostrar.map(s=>{
     const pago = pagosMes[s.id];
-    const plan = planes.find(p=>p.nombre===s.plan);
-    const precioPlan = plan ? Number(plan.precio)||0 : 0;
+    const precioPlan = precioEsperado(s, pago);
     const esLibre = pago && pago.libre;
     const esParcial = pago && !esLibre && precioPlan && Number(pago.monto) < precioPlan;
     const saldo = esParcial ? precioPlan - Number(pago.monto) : 0;
@@ -1383,7 +1442,7 @@ async function renderCuotas(){
     } else if(esParcial){
       estado = `<span class="pill pend">Pendiente ${fmtMoney(saldo)}</span>`;
     } else {
-      estado = '<span class="pill ok">Pagado</span>';
+      estado = '<span class="pill ok">Pagado</span>' + (pago.medioMes ? '<span class="pill medio">½ mes</span>' : '');
     }
 
     const btnEditarMonto = `<button class="btn btn-ghost btn-sm" data-editar-monto="${s.id}"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg></span> Editar monto</button>`;
@@ -1420,7 +1479,7 @@ async function renderCuotas(){
 
     return `<tr>
       <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
-      <td>${s.nombre} ${s.apellido}</td>
+      <td>${s.nombre} ${s.apellido}${s.medioMes && !(pago && pago.medioMes) ? '<span class="pill medio">½ mes</span>' : ''}</td>
       <td>${s.plan||'—'}</td>
       <td>${estado}</td>
       <td>${pago && !esLibre ? fmtMoney(pago.monto) : '—'}</td>
@@ -1429,8 +1488,6 @@ async function renderCuotas(){
       <td>${accion}</td>
     </tr>`;
   }).join('');
-
-  $('statPendientes').textContent = pendientes;
 
   document.querySelectorAll('[data-registrar]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.registrar)));
   document.querySelectorAll('[data-editar-monto]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.editarMonto)));
@@ -1441,33 +1498,53 @@ async function renderCuotas(){
   document.querySelectorAll('[data-quitar-libre]').forEach(b=>b.addEventListener('click', ()=>quitarLibre(b.dataset.quitarLibre)));
 }
 
-function actualizarSaldoAviso(){
-  const socioId = $('pagoSocioId').value;
-  const s = socios.find(x=>x.id===socioId);
+// Precio que corresponde cobrar según lo que está tildado en el modal.
+function precioEsperadoModal(){
+  const s = socios.find(x=>x.id===$('pagoSocioId').value);
+  if(!s) return 0;
+  const plan = planes.find(p=>p.nombre===s.plan);
+  const base = plan ? Number(plan.precio)||0 : 0;
+  return $('pagoMedioMes').checked ? Math.round(base/2) : base;
+}
+function actualizarPagoPlanTexto(){
+  const s = socios.find(x=>x.id===$('pagoSocioId').value);
   const plan = s ? planes.find(p=>p.nombre===s.plan) : null;
+  if(!plan){ $('pagoPlanPrecio').textContent = ''; return; }
+  const esperado = precioEsperadoModal();
+  $('pagoPlanPrecio').textContent = $('pagoMedioMes').checked
+    ? `Plan ${plan.nombre}: ${fmtMoney(plan.precio)} — medio mes: ${fmtMoney(esperado)}`
+    : `Plan ${plan.nombre}: ${fmtMoney(plan.precio)} — podés cambiar el monto si paga solo una parte`;
+}
+function actualizarSaldoAviso(){
+  const esperado = precioEsperadoModal();
   const monto = Number($('pagoMonto').value)||0;
-  if(plan && monto > 0 && monto < Number(plan.precio)){
-    $('pagoSaldoAviso').textContent = `Va a quedar como pago parcial: falta ${fmtMoney(Number(plan.precio) - monto)} de este plan.`;
+  if(esperado && monto > 0 && monto < esperado){
+    $('pagoSaldoAviso').textContent = `Va a quedar como pago parcial: falta ${fmtMoney(esperado - monto)}.`;
   } else {
     $('pagoSaldoAviso').textContent = '';
   }
 }
 $('pagoMonto').addEventListener('input', actualizarSaldoAviso);
+$('pagoMedioMes').addEventListener('change', ()=>{
+  $('pagoMonto').value = precioEsperadoModal() || '';
+  actualizarPagoPlanTexto();
+  actualizarSaldoAviso();
+});
 
 function abrirModalPago(socioId){
   const s = socios.find(x=>x.id===socioId);
-  const plan = planes.find(p=>p.nombre===s.plan);
   const key = mesKey(mesActual);
   const pagoExistente = cuotasCache[key] ? cuotasCache[key][socioId] : null;
 
   $('pagoSocioId').value = socioId;
   $('pagoId').value = pagoExistente ? pagoExistente.id : '';
   $('pagoSocioNombre').textContent = s.nombre+' '+s.apellido;
-  $('pagoPlanPrecio').textContent = plan ? `Plan ${plan.nombre}: ${fmtMoney(plan.precio)} — podés cambiar el monto si paga solo una parte` : '';
   $('modalPagoTitulo').textContent = pagoExistente ? 'Editar monto del pago' : 'Registrar pago';
-  $('pagoMonto').value = pagoExistente ? pagoExistente.monto : (plan?plan.precio:'');
+  $('pagoMedioMes').checked = pagoExistente ? !!pagoExistente.medioMes : !!s.medioMes;
+  $('pagoMonto').value = pagoExistente ? pagoExistente.monto : (precioEsperadoModal() || '');
   $('pagoFecha').value = pagoExistente ? pagoExistente.fecha : new Date().toISOString().slice(0,10);
   $('pagoMedio').value = pagoExistente ? (pagoExistente.medioPago || 'Efectivo') : 'Efectivo';
+  actualizarPagoPlanTexto();
   actualizarSaldoAviso();
   openModal('modalPago');
   setTimeout(()=>{ $('pagoMonto').focus(); $('pagoMonto').select(); }, 100);
@@ -1484,6 +1561,7 @@ $('btnConfirmarPago').addEventListener('click', async ()=>{
     dia: diaPago,
     mesKey: key,
     medioPago: $('pagoMedio').value,
+    medioMes: $('pagoMedioMes').checked,
     libre: false,
     uid: currentUid
   };
@@ -1505,6 +1583,14 @@ $('btnConfirmarPago').addEventListener('click', async ()=>{
       data.creado = firebase.firestore.FieldValue.serverTimestamp();
       await db.collection('socios_addictive').doc(socioId).collection('pagos').add(data);
     }
+    // Si cambió el "medio mes", queda guardado también en la ficha del socio
+    // para que la próxima vez ya venga tildado.
+    const socioPago = socios.find(x=>x.id===socioId);
+    if(socioPago && !!socioPago.medioMes !== data.medioMes){
+      await db.collection('socios_addictive').doc(socioId).update({medioMes: data.medioMes});
+      socioPago.medioMes = data.medioMes;
+      renderSocios($('searchSocios').value);
+    }
     delete cuotasCache[key]; // invalidar cache de ese mes
     closeModal('modalPago');
     await renderCuotas();
@@ -1520,12 +1606,12 @@ $('btnConfirmarPago').addEventListener('click', async ()=>{
 
 async function marcarLibre(socioId){
   const s = socios.find(x=>x.id===socioId);
-  if(!confirm(`¿Marcar a ${s.nombre} ${s.apellido} como Libre este mes? No se le va a cobrar ni se va a contar en la comisión del profe. Podés cambiarlo a Pagado después cuando quieras.`)) return;
+  if(!confirm(`¿Marcar a ${s.nombre} ${s.apellido} como Libre este mes? No se le va a cobrar este mes. Podés cambiarlo a Pagado después cuando quieras.`)) return;
   const key = mesKey(mesActual);
   const hoy = new Date().toISOString().slice(0,10);
   await db.collection('socios_addictive').doc(socioId).collection('pagos').add({
     monto: 0, fecha: hoy, dia: Number(hoy.split('-')[2]), mesKey: key,
-    libre: true, medioPago: '', uid: currentUid,
+    libre: true, medioMes: !!s.medioMes, medioPago: '', uid: currentUid,
     creado: firebase.firestore.FieldValue.serverTimestamp()
   });
   delete cuotasCache[key];
@@ -1578,7 +1664,7 @@ let recordIndex = 0;
 async function abrirRecordatorios(){
   const key = mesKey(mesActual);
   const pagosMes = await cargarPagosMes(key);
-  recordQueue = socios.filter(s=>s.activo && !pagosMes[s.id]);
+  recordQueue = socios.filter(s=>socioCuentaEnMes(s, key, pagosMes) && !pagosMes[s.id]);
   recordIndex = 0;
   if(recordQueue.length===0){ toast('No hay socios con cuota pendiente este mes'); return; }
   openModal('modalRecordatorios');
@@ -1616,9 +1702,9 @@ async function renderLiquidaciones(){
   $('mesLabelProf').textContent = MESES[mesActualProf.getMonth()] + ' ' + mesActualProf.getFullYear();
   const profeObj = profesoresList.find(p=>p.nombre===profeSeleccionado);
   if(!profeObj) return;
-  const alumnos = socios.filter(s=>s.profesorId===profeObj.id && s.activo);
   const key = mesKey(mesActualProf);
   const pagosMes = await cargarPagosMes(key);
+  const alumnos = socios.filter(s=>s.profesorId===profeObj.id && socioCuentaEnMes(s, key, pagosMes));
 
   let total = 0;
   const excluirLibreDeLiquidacion = PROFES_CON_PIN.includes(profeSeleccionado);
@@ -1631,8 +1717,7 @@ async function renderLiquidaciones(){
         // profe atendió al alumno igual). Excepción: para Hector y
         // Cecilia, Libre NO suma nada a su liquidación.
         if(!excluirLibreDeLiquidacion){
-          const plan = planes.find(p=>p.nombre===s.plan);
-          total += plan ? Number(plan.precio)||0 : 0;
+          total += precioEsperado(s, pago);
         }
       } else {
         total += Number(pago.monto)||0;
@@ -1641,7 +1726,9 @@ async function renderLiquidaciones(){
     return {socio:s, pago};
   });
 
-  $('profAlumnos').textContent = alumnos.length;
+  const cantLibres = alumnos.filter(s=>pagosMes[s.id] && pagosMes[s.id].libre).length;
+  $('profAlumnos').textContent = alumnos.length - cantLibres;
+  $('profAlumnosLbl').textContent = cantLibres ? `Alumnos asignados (+${cantLibres} libres)` : 'Alumnos asignados';
   profTotalReal = total;
   if(profeSeleccionado === ENTRENA_SOLO){
     profLiquidacionReal = 0;
@@ -1662,8 +1749,8 @@ async function renderLiquidaciones(){
       if(excluirLibreDeLiquidacion){
         monto = '— (no cuenta)';
       } else {
-        const plan = planes.find(p=>p.nombre===f.socio.plan);
-        monto = plan ? fmtMoney(plan.precio) + ' (libre)' : '—';
+        const esperado = precioEsperado(f.socio, f.pago);
+        monto = esperado ? fmtMoney(esperado) + ' (libre)' : '—';
       }
     } else {
       pill = '<span class="pill ok">Pagado</span>';
