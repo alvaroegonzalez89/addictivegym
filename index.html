@@ -586,6 +586,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
         <label>Estado</label>
         <select id="socioActivo"><option value="true">Activo</option><option value="false">Inactivo</option></select>
       </div>
+      <div class="field hidden" id="socioFechaBajaWrap">
+        <label>Fecha de baja (desde ese mes deja de figurar en Cuotas; los meses anteriores quedan como estaban)</label>
+        <input type="date" id="socioFechaBaja">
+      </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;">
         <input type="checkbox" id="socioMedioMes" style="width:16px;height:16px;">
         Medio mes (va solo medio mes y paga la mitad del plan)
@@ -717,6 +721,12 @@ function toast(msg, isErr){
   t.innerHTML = '<div style="display:flex;align-items:center;">' + iconSvg + '<span>' + msg + '</span></div>';
   $('toastWrap').appendChild(t);
   setTimeout(()=>t.remove(), 4200);
+}
+// Fecha de hoy YYYY-MM-DD en hora local (toISOString usa UTC y, pasadas las
+// 21 hs en Argentina, daría el día siguiente: en fin de mes, el mes siguiente).
+function hoyISO(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 function fmtMoney(n){ return '$' + (Number(n)||0).toLocaleString('es-AR'); }
 // Búsqueda por nombre, apellido o DNI, sin importar tildes ni mayúsculas.
@@ -1092,6 +1102,17 @@ $('btnImprimirSocios').addEventListener('click', ()=>{
   `).join('');
   window.print();
 });
+// El campo "Fecha de baja" solo se muestra cuando el estado es Inactivo.
+function actualizarCampoBaja(){
+  const inactivo = $('socioActivo').value === 'false';
+  $('socioFechaBajaWrap').classList.toggle('hidden', !inactivo);
+  const s = socios.find(x=>x.id===$('socioId').value);
+  const yaEstabaInactivo = s && !s.activo;
+  // Si recién lo pasan a inactivo y no hay fecha, se propone hoy.
+  if(inactivo && !$('socioFechaBaja').value && !yaEstabaInactivo) $('socioFechaBaja').value = hoyISO();
+}
+$('socioActivo').addEventListener('change', actualizarCampoBaja);
+
 function abrirModalSocio(id){
   const s = socios.find(x=>x.id===id);
   $('modalSocioTitle').textContent = s ? 'Editar socio' : 'Nuevo socio';
@@ -1101,11 +1122,13 @@ function abrirModalSocio(id){
   $('socioDni').value = s?.dni||'';
   $('socioTelefono').value = s?.telefono||'';
   $('socioFechaNacimiento').value = s?.fechaNacimiento||'';
-  $('socioFechaInicio').value = s?.fechaInicio || (s ? '' : new Date().toISOString().slice(0,10));
+  $('socioFechaInicio').value = s?.fechaInicio || (s ? '' : hoyISO());
   $('socioMedioMes').checked = !!s?.medioMes;
   $('socioPlan').value = s?.plan||(planes[0]?.nombre||'');
   $('socioProfesor').value = s?.profesorId||(profesoresList[0]?.id||'');
-  $('socioActivo').value = s ? String(s.activo) : 'true';
+  $('socioActivo').value = s ? String(!!s.activo) : 'true';
+  $('socioFechaBaja').value = s?.fechaBaja || '';
+  actualizarCampoBaja();
   $('socioFotoPreview').src = s?.fotoURL || 'https://api.dicebear.com/7.x/initials/svg?seed=Socio';
   $('btnEliminarSocio').classList.toggle('hidden', !s);
   openModal('modalSocio');
@@ -1166,6 +1189,17 @@ $('btnGuardarSocio').addEventListener('click', async ()=>{
       uid: currentUid
     };
     if(fotoURL) data.fotoURL = fotoURL;
+    // Baja y reingreso: se guarda desde qué mes dejó de figurar (y desde cuál
+    // volvió, si reingresa), para que los meses anteriores no cambien.
+    if(!data.activo){
+      const pasaAInactivo = !existente || existente.activo;
+      let baja = $('socioFechaBaja').value;
+      if(!baja && pasaAInactivo) baja = hoyISO();
+      data.fechaBaja = baja || '';
+      if(pasaAInactivo) data.fechaReingreso = '';
+    } else if(existente && !existente.activo){
+      data.fechaReingreso = hoyISO();
+    }
     if(id){
       await db.collection('socios_addictive').doc(id).update(data);
     } else {
@@ -1352,12 +1386,21 @@ function mesInicioSocio(s){
   return null; // sin datos: se asume que ya estaba
 }
 
-// ¿Este socio cuenta en el mes "key"? Solo si está activo y ya había
-// arrancado. Si tiene un pago (o Libre) cargado ese mes, siempre cuenta,
-// por si se cargó la fecha de inicio después.
+// ¿Este socio cuenta en el mes "key"? Solo si ya había arrancado y todavía
+// no le habían dado la baja. Con la fecha de baja, desde ese mes en adelante
+// deja de figurar, pero en los meses anteriores queda como estaba (pagado o
+// pendiente). Si reingresó, vuelve a contar desde el mes de reingreso.
+// Si tiene un pago (o Libre) cargado ese mes, siempre cuenta, para no perder
+// plata ya registrada.
 function socioCuentaEnMes(s, key, pagosMes){
-  if(!s.activo) return false;
-  if(pagosMes && pagosMes[s.id]) return true;
+  const tienePago = !!(pagosMes && pagosMes[s.id]);
+  const baja = s.fechaBaja ? s.fechaBaja.slice(0,7) : null;
+  const reingreso = s.fechaReingreso ? s.fechaReingreso.slice(0,7) : null;
+  // Inactivo viejo, sin fecha de baja: no cuenta en ningún mes (como antes).
+  if(!s.activo && !baja) return false;
+  const dadoDeBaja = baja && baja <= key && !(reingreso && reingreso <= key);
+  if(dadoDeBaja) return tienePago;
+  if(tienePago) return true;
   const ini = mesInicioSocio(s);
   return !ini || ini <= key;
 }
@@ -1499,7 +1542,7 @@ async function renderCuotas(){
 
     return `<tr>
       <td><img class="avatar" src="${s.fotoURL||'https://api.dicebear.com/7.x/initials/svg?seed='+encodeURIComponent(s.nombre)}"></td>
-      <td>${s.nombre} ${s.apellido}${s.medioMes && !(pago && pago.medioMes) ? '<span class="pill medio">½ mes</span>' : ''}</td>
+      <td>${s.nombre} ${s.apellido}${s.medioMes && !(pago && pago.medioMes) ? '<span class="pill medio">½ mes</span>' : ''}${!s.activo ? '<span class="pill off" style="margin-left:6px;">Baja</span>' : ''}</td>
       <td>${s.plan||'—'}</td>
       <td>${estado}</td>
       <td>${pago && !esLibre ? fmtMoney(pago.monto) : '—'}</td>
@@ -1562,7 +1605,7 @@ function abrirModalPago(socioId){
   $('modalPagoTitulo').textContent = pagoExistente ? 'Editar monto del pago' : 'Registrar pago';
   $('pagoMedioMes').checked = pagoExistente ? !!pagoExistente.medioMes : !!s.medioMes;
   $('pagoMonto').value = pagoExistente ? pagoExistente.monto : (precioEsperadoModal() || '');
-  $('pagoFecha').value = pagoExistente ? pagoExistente.fecha : new Date().toISOString().slice(0,10);
+  $('pagoFecha').value = pagoExistente ? pagoExistente.fecha : hoyISO();
   $('pagoMedio').value = pagoExistente ? (pagoExistente.medioPago || 'Efectivo') : 'Efectivo';
   actualizarPagoPlanTexto();
   actualizarSaldoAviso();
@@ -1628,7 +1671,7 @@ async function marcarLibre(socioId){
   const s = socios.find(x=>x.id===socioId);
   if(!confirm(`¿Marcar a ${s.nombre} ${s.apellido} como Libre este mes? No se le va a cobrar este mes. Podés cambiarlo a Pagado después cuando quieras.`)) return;
   const key = mesKey(mesActual);
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = hoyISO();
   await db.collection('socios_addictive').doc(socioId).collection('pagos').add({
     monto: 0, fecha: hoy, dia: Number(hoy.split('-')[2]), mesKey: key,
     libre: true, medioMes: !!s.medioMes, medioPago: '', uid: currentUid,
@@ -1684,7 +1727,7 @@ let recordIndex = 0;
 async function abrirRecordatorios(){
   const key = mesKey(mesActual);
   const pagosMes = await cargarPagosMes(key);
-  recordQueue = socios.filter(s=>socioCuentaEnMes(s, key, pagosMes) && !pagosMes[s.id]);
+  recordQueue = socios.filter(s=>s.activo && socioCuentaEnMes(s, key, pagosMes) && !pagosMes[s.id]);
   recordIndex = 0;
   if(recordQueue.length===0){ toast('No hay socios con cuota pendiente este mes'); return; }
   openModal('modalRecordatorios');
@@ -1822,7 +1865,7 @@ async function aprobarInscripcion(id){
   const i = inscripcionesPendientes.find(x=>x.id===id);
   await db.collection('socios_addictive').add({
     nombre:i.nombre, apellido:i.apellido, dni:i.dni, telefono:i.telefono,
-    fechaNacimiento:i.fechaNacimiento||'', fechaInicio: new Date().toISOString().slice(0,10),
+    fechaNacimiento:i.fechaNacimiento||'', fechaInicio: hoyISO(),
     fotoURL:i.fotoURL||'', plan:i.plan, profesorId:i.profesorId, activo:true,
     uid: currentUid, fechaInscripcion: firebase.firestore.FieldValue.serverTimestamp()
   });
@@ -1913,7 +1956,7 @@ $('pubSubmitBtn')?.addEventListener('click', async ()=>{
       nombre, apellido, dni, telefono, fechaNacimiento, fotoURL,
       plan: plan.nombre, profesorId, profesorNombre: profe?profe.nombre:'',
       estado:'pendiente', uid: GYM_UID_PUBLICO,
-      fecha: new Date().toISOString().slice(0,10),
+      fecha: hoyISO(),
       creado: firebase.firestore.FieldValue.serverTimestamp()
     });
     $('inscForm').classList.add('hidden');
