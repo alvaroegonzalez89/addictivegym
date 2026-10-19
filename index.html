@@ -373,10 +373,13 @@ tr:hover td{background:rgba(255,255,255,.02);}
             </div>
           </div>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);margin-bottom:14px;">
-          <input type="checkbox" id="soloPagosHasta10" style="width:16px;height:16px;">
-          Pagos hasta el 10 (mostrar solo los socios que pagaron hasta el día 10 de este mes)
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-muted);">
+            <input type="checkbox" id="soloPagosHasta10" style="width:16px;height:16px;">
+            Pagos hasta el 10 (mostrar solo los socios que pagaron hasta el día 10 de este mes)
+          </label>
+          <div class="search-box"><span class="icon icon-sm"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span><input type="text" id="searchCuotas" placeholder="Buscar por nombre o DNI..." autocomplete="off"></div>
+        </div>
         <p id="cuotasResumen" style="font-size:13px;color:var(--teal-light);margin-bottom:14px;"></p>
         <table>
           <thead><tr>
@@ -716,6 +719,15 @@ function toast(msg, isErr){
   setTimeout(()=>t.remove(), 4200);
 }
 function fmtMoney(n){ return '$' + (Number(n)||0).toLocaleString('es-AR'); }
+// Búsqueda por nombre, apellido o DNI, sin importar tildes ni mayúsculas.
+function normalizarTexto(t){
+  return String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+function coincideBusqueda(s, termino){
+  const t = normalizarTexto(termino);
+  if(!t) return true;
+  return normalizarTexto(s.nombre+' '+s.apellido+' '+(s.dni||'')).includes(t);
+}
 function fmtFechaNac(iso){
   if(!iso) return '—';
   const [y,m,d] = iso.split('-');
@@ -1028,11 +1040,7 @@ async function cargarSocios(){
 function profeNombre(id){ const p = profesoresList.find(x=>x.id===id); return p?p.nombre:'—'; }
 
 function renderSocios(filter){
-  const term = (filter||'').toLowerCase();
-  let filtrados = socios.filter(s=>{
-    if(!term) return true;
-    return (s.nombre+' '+s.apellido+' '+(s.dni||'')).toLowerCase().includes(term);
-  });
+  let filtrados = socios.filter(s=>coincideBusqueda(s, filter));
   filtrados = ordenarSocios(filtrados);
   if(filtrados.length===0){
     $('sociosTableBody').innerHTML='';
@@ -1069,11 +1077,7 @@ $('btnNuevoSocio').addEventListener('click', ()=>abrirModalSocio(null));
 
 $('btnImprimirSocios').addEventListener('click', ()=>{
   // Usa el mismo orden/filtro que se ve en pantalla en ese momento
-  const term = $('searchSocios').value.toLowerCase();
-  let lista = socios.filter(s=>{
-    if(!term) return true;
-    return (s.nombre+' '+s.apellido+' '+(s.dni||'')).toLowerCase().includes(term);
-  });
+  let lista = socios.filter(s=>coincideBusqueda(s, $('searchSocios').value));
   lista = ordenarSocios(lista);
 
   $('printSociosFecha').textContent = 'Listado generado el ' + new Date().toLocaleDateString('es-AR');
@@ -1288,6 +1292,7 @@ $('mesNext').addEventListener('click', ()=>{
   if(mesKey(mesActual) < mesKey(limite)){ mesActual.setMonth(mesActual.getMonth()+1); renderCuotas(); }
 });
 $('soloPagosHasta10').addEventListener('change', renderCuotas);
+$('searchCuotas').addEventListener('input', renderCuotas);
 
 // Trae los pagos del mes de TODOS los socios en UNA sola consulta (collection
 // group query sobre todas las subcolecciones "pagos"), filtrada por uid y
@@ -1296,20 +1301,33 @@ $('soloPagosHasta10').addEventListener('change', renderCuotas);
 // rápida. La usan tanto Cuotas como Liquidaciones.
 async function cargarPagosMes(key){
   if(cuotasCache[key]) return cuotasCache[key];
-  const snap = await db.collectionGroup('pagos')
-    .where('uid','==',currentUid)
-    .where('mesKey','==',key)
-    .get();
   const mapa = {};
-  snap.forEach(doc=>{
-    const socioId = doc.ref.parent.parent.id;
-    // Si por algún motivo quedó más de un pago para el mismo socio en el
-    // mismo mes (datos viejos), nos quedamos con el de monto más alto.
+  // Si por algún motivo quedó más de un pago para el mismo socio en el
+  // mismo mes (datos viejos), nos quedamos con el de monto más alto.
+  const agregar = (socioId, id, datos)=>{
     const existente = mapa[socioId];
-    if(!existente || Number(doc.data().monto||0) >= Number(existente.monto||0)){
-      mapa[socioId] = {id: doc.id, ...doc.data()};
+    if(!existente || Number(datos.monto||0) >= Number(existente.monto||0)){
+      mapa[socioId] = {id, ...datos};
     }
-  });
+  };
+  try{
+    const snap = await db.collectionGroup('pagos')
+      .where('uid','==',currentUid)
+      .where('mesKey','==',key)
+      .get();
+    snap.forEach(doc=> agregar(doc.ref.parent.parent.id, doc.id, doc.data()));
+  }catch(err){
+    // Respaldo: si la consulta única no está disponible (por ejemplo el
+    // índice todavía se está creando, o falta la regla), seguimos con la
+    // forma anterior, una consulta por socio. Es más lenta pero funciona.
+    console.warn('Consulta única de pagos no disponible, uso una por socio:', err.message);
+    const resultados = await Promise.all(socios.map(async s=>{
+      const snap = await db.collection('socios_addictive').doc(s.id).collection('pagos')
+        .where('mesKey','==',key).get();
+      return snap.docs.map(d=>[s.id, d.id, d.data()]);
+    }));
+    resultados.flat().forEach(([socioId, id, datos])=> agregar(socioId, id, datos));
+  }
   cuotasCache[key] = mapa;
   return mapa;
 }
@@ -1418,7 +1436,9 @@ async function renderCuotas(){
     `Total: ${sociosDelMes.length}  ·  Pagados: ${resumen.pagados}  ·  Pagos parciales: ${resumen.parciales}  ·  Pendientes: ${resumen.pendientes}  ·  Libres: ${resumen.libres}`;
 
   const soloHasta10 = $('soloPagosHasta10').checked;
+  const terminoCuotas = $('searchCuotas').value;
   let sociosAMostrar = sociosDelMes.filter(s=>{
+    if(!coincideBusqueda(s, terminoCuotas)) return false;
     if(!soloHasta10) return true;
     const pago = pagosMes[s.id];
     return pago && pago.dia && pago.dia <= 10;
@@ -1487,7 +1507,7 @@ async function renderCuotas(){
       <td>${pago?.fecha||'—'}</td>
       <td>${accion}</td>
     </tr>`;
-  }).join('');
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">No se encontraron socios con ese criterio.</td></tr>';
 
   document.querySelectorAll('[data-registrar]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.registrar)));
   document.querySelectorAll('[data-editar-monto]').forEach(b=>b.addEventListener('click', ()=>abrirModalPago(b.dataset.editarMonto)));
